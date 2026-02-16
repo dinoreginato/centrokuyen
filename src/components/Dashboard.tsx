@@ -1,0 +1,410 @@
+import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { Users, UserPlus, Calendar, DollarSign, TrendingUp, Activity, BarChart3, Bell } from 'lucide-react'
+import { toast } from 'sonner'
+import { useAuth } from '@/contexts/AuthContext'
+import { useSucursal } from '@/contexts/SucursalContext'
+import { profesionalesService, pacientesService, atencionesService, profesionalComisionesService } from '@/utils/supabase'
+import { format as dateFormat, startOfMonth, endOfMonth, parseISO } from 'date-fns'
+import { es } from 'date-fns/locale'
+import DashboardCharts from './DashboardCharts'
+import { autoNotificationService, notificationService } from '@/utils/notifications'
+import { formatCLP } from '@/utils/currency'
+
+const Dashboard = () => {
+  const { user } = useAuth()
+  const { currentSucursal } = useSucursal()
+  const [stats, setStats] = useState({
+    totalProfesionales: 0,
+    totalPacientes: 0,
+    totalAtencionesMes: 0,
+    ingresosMes: 0,
+    atencionesPendientes: 0,
+    proximasAtenciones: [] as any[]
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadDashboardData()
+    checkNotifications()
+    return () => {
+      autoNotificationService.stop()
+    }
+  }, [currentSucursal])
+  
+  const checkNotifications = async () => {
+    try {
+      const today = new Date()
+      const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
+      
+      const startDate = today.toISOString().split('T')[0]
+      const endDate = nextWeek.toISOString().split('T')[0]
+      
+      const appointments = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id)
+      
+      // Filter notifications for professional
+      const filteredAppointments = (user?.rol === 'profesional' && user.profesional_id)
+        ? appointments.filter(a => a.profesional_id === user.profesional_id)
+        : appointments
+
+      autoNotificationService.start(filteredAppointments)
+    } catch (error) {
+      console.error('Error starting notification service:', error)
+    }
+  }
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true)
+      
+      const currentDate = new Date()
+      const startOfCurrentMonth = startOfMonth(currentDate)
+      const endOfCurrentMonth = endOfMonth(currentDate)
+      
+      const [profesionales, pacientes, atenciones] = await Promise.all([
+        profesionalesService.getAll(currentSucursal?.id),
+        pacientesService.getAll(currentSucursal?.id),
+        atencionesService.getAll(currentSucursal?.id)
+      ])
+
+      // Determine filters based on role
+      const isProfesional = user?.rol === 'profesional' && user.profesional_id
+      
+      let filteredAtenciones = atenciones
+      if (isProfesional) {
+        filteredAtenciones = atenciones.filter(a => a.profesional_id === user.profesional_id)
+      }
+
+      // 1. Total Profesionales / Atenciones Históricas
+      // If Admin: Total Profesionales
+      // If Profesional: Total Historical Appointments (or maybe "Mis Atenciones Totales")
+      let metric1Value = profesionales.length
+      
+      if (isProfesional) {
+         metric1Value = filteredAtenciones.length
+      }
+
+      // 2. Total Pacientes
+      // If Admin: Total Pacientes in DB
+      // If Profesional: Unique patients seen by me
+      let metric2Value = pacientes.length
+      
+      if (isProfesional) {
+        const uniquePatients = new Set(filteredAtenciones.map(a => a.paciente_id))
+        metric2Value = uniquePatients.size
+      }
+
+      // 3. Atenciones Este Mes (Todas, pagadas o no, para estadísticas de cantidad)
+      const atencionesMes = filteredAtenciones.filter(atencion => {
+        const atencionDate = parseISO(atencion.fecha)
+        return atencionDate >= startOfCurrentMonth && atencionDate <= endOfCurrentMonth
+      })
+
+      // 4. Ingresos Este Mes / Mis Ganancias (SOLO PAGADAS)
+      let ingresosMes = 0
+
+      // Filtramos solo las pagadas para el cálculo de dinero
+      const atencionesPagadasMes = atencionesMes.filter(a => a.pagado)
+
+      if (isProfesional && user?.profesional_id) {
+        const pid = user.profesional_id
+        const profesionalActual = profesionales.find(p => p.id === pid)
+        if (profesionalActual) {
+          const comisiones = await profesionalComisionesService.getAll(pid)
+          
+          ingresosMes = atencionesPagadasMes.reduce((total, atencion) => {
+            const comisionEspecifica = comisiones.find(c => c.tipo_atencion_id === atencion.tipo_atencion)
+            const porcentaje = comisionEspecifica?.porcentaje ?? profesionalActual.porcentaje_pago ?? 0
+            const montoFijo = comisionEspecifica?.monto_fijo ?? profesionalActual.monto_fijo_pago ?? 0
+            const pagoPorcentaje = (atencion.valor_cobrado * porcentaje) / 100
+            return total + pagoPorcentaje + montoFijo
+          }, 0)
+        }
+      } else {
+        // Para admin, sumamos el total cobrado de las atenciones pagadas
+        ingresosMes = atencionesPagadasMes.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
+      }
+
+      // 5. Atenciones Pendientes (filtered)
+      const atencionesPendientes = filteredAtenciones.filter(a => !a.pagado && a.estado_asistencia !== 'no_asistio').length
+
+      // 6. Próximas Atenciones (filtered)
+      const proximosDias = new Date()
+      proximosDias.setDate(proximosDias.getDate() + 7)
+      
+      const proximasAtenciones = filteredAtenciones
+        .filter(atencion => {
+          const atencionDate = parseISO(atencion.fecha)
+          return atencionDate >= new Date() && atencionDate <= proximosDias
+        })
+        .sort((a, b) => new Date(`${a.fecha}T${a.hora}`).getTime() - new Date(`${b.fecha}T${b.hora}`).getTime())
+        .slice(0, 5)
+
+      setStats({
+        totalProfesionales: metric1Value,
+        totalPacientes: metric2Value,
+        totalAtencionesMes: atencionesMes.length,
+        ingresosMes,
+        atencionesPendientes,
+        proximasAtenciones
+      })
+    } catch (error) {
+      toast.error('Error al cargar datos del dashboard')
+      console.error('Error loading dashboard data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
+      </div>
+    )
+  }
+
+  const isProfesional = user?.rol === 'profesional'
+  const esProfesionalEnRengo = isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-gray-800">Dashboard Principal</h1>
+        <div className="text-sm text-gray-500">
+          {dateFormat(new Date(), 'EEEE d MMMM yyyy', { locale: es })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Link to={isProfesional ? "/agenda" : "/profesionales"} className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">
+                  {isProfesional ? 'Total Atenciones' : 'Total Profesionales'}
+              </p>
+              <p className="text-3xl font-bold text-medical-blue">{stats.totalProfesionales}</p>
+            </div>
+            <div className="bg-medical-blue text-white rounded-full p-3">
+              <Users className="h-6 w-6" />
+            </div>
+          </div>
+        </Link>
+
+        <Link to={isProfesional ? "/agenda" : "/pacientes"} className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">
+                  {isProfesional ? 'Mis Pacientes' : 'Total Pacientes'}
+              </p>
+              <p className="text-3xl font-bold text-medical-green">{stats.totalPacientes}</p>
+            </div>
+            <div className="bg-medical-green text-white rounded-full p-3">
+              <UserPlus className="h-6 w-6" />
+            </div>
+          </div>
+        </Link>
+
+        <Link to="/agenda" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">
+                  {isProfesional ? 'Mis Atenciones (Mes)' : 'Atenciones Este Mes'}
+              </p>
+              <p className="text-3xl font-bold text-orange-600">{stats.totalAtencionesMes}</p>
+            </div>
+            <div className="bg-orange-600 text-white rounded-full p-3">
+              <Calendar className="h-6 w-6" />
+            </div>
+          </div>
+        </Link>
+
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">
+                {isProfesional ? 'Mis Ganancias' : 'Ingresos Este Mes'}
+              </p>
+              <p className="text-3xl font-bold text-purple-600">{formatCLP(stats.ingresosMes)}</p>
+            </div>
+            <div className="bg-purple-600 text-white rounded-full p-3">
+              <DollarSign className="h-6 w-6" />
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Accesos Rápidos</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {!isProfesional && (
+            <Link
+              to="/profesionales/nuevo"
+              className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <div className="bg-medical-blue text-white rounded-full p-3 mb-2">
+                <Users className="h-6 w-6" />
+              </div>
+              <span className="text-sm font-medium text-gray-700">Nuevo Profesional</span>
+            </Link>
+          )}
+
+          {!isProfesional && (
+            <Link
+              to="/pacientes/nuevo"
+              className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <div className="bg-medical-green text-white rounded-full p-3 mb-2">
+                <UserPlus className="h-6 w-6" />
+              </div>
+              <span className="text-sm font-medium text-gray-700">Nuevo Paciente</span>
+            </Link>
+          )}
+
+          <Link
+            to="/agenda/nueva"
+            className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <div className="bg-orange-600 text-white rounded-full p-3 mb-2">
+              <Calendar className="h-6 w-6" />
+            </div>
+            <span className="text-sm font-medium text-gray-700">Nueva Atención</span>
+          </Link>
+
+          {!isProfesional && (
+              <Link
+                to="/reportes"
+                className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <div className="bg-purple-600 text-white rounded-full p-3 mb-2">
+                  <TrendingUp className="h-6 w-6" />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Ver Reportes</span>
+              </Link>
+          )}
+        </div>
+      </div>
+
+      {stats.proximasAtenciones.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Próximas Atenciones</h2>
+          <div className="space-y-3">
+            {stats.proximasAtenciones.map(atencion => (
+              <div key={atencion.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-medical-blue text-white rounded-full p-2">
+                    <Activity className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-800">{atencion.paciente?.nombre}</p>
+                    <p className="text-sm text-gray-600">
+                      {atencion.profesional?.nombre} - {atencion.tipos_atencion?.nombre || 'Sin tipo'}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {dateFormat(parseISO(atencion.fecha), 'dd/MM/yyyy')} a las {atencion.hora}
+                    </p>
+                  </div>
+                </div>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  atencion.estado_asistencia === 'no_asistio'
+                    ? 'bg-red-100 text-red-800'
+                    : atencion.pagado ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {atencion.estado_asistencia === 'no_asistio' ? 'No Asistió' : (atencion.pagado ? 'Pagado' : 'Pendiente')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="flex items-center mb-4">
+            <Bell className="h-6 w-6 text-medical-blue mr-2" />
+            <h2 className="text-xl font-semibold text-gray-800">Notificaciones Recientes</h2>
+          </div>
+          <div className="space-y-3">
+            {(() => {
+              const notifications = notificationService.loadNotifications()
+              const recentNotifications = notifications.slice(0, 3)
+              
+              if (recentNotifications.length === 0) {
+                return (
+                  <div className="text-center py-4">
+                    <Bell className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-500 text-sm">No hay notificaciones recientes</p>
+                  </div>
+                )
+              }
+              
+              return recentNotifications.map(notification => (
+                <div key={notification.id} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-shrink-0">
+                    {notification.type === 'appointment_reminder' && <Calendar className="h-4 w-4 text-blue-500" />}
+                    {notification.type === 'payment_due' && <DollarSign className="h-4 w-4 text-orange-500" />}
+                    {!notification.read && <div className="w-2 h-2 bg-red-500 rounded-full mt-1"></div>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{notification.title}</p>
+                    <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {dateFormat(notification.timestamp, 'dd/MM/yyyy HH:mm')}
+                    </p>
+                  </div>
+                </div>
+              ))
+            })()}
+          </div>
+          <div className="mt-4 text-center">
+            <Link to="/agenda" className="text-sm text-medical-blue hover:text-blue-700">
+              Ver todas las notificaciones
+            </Link>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {stats.atencionesPendientes > 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <Calendar className="h-5 w-5 text-yellow-400" />
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-yellow-800">
+                    Hay {stats.atencionesPendientes} atenciones pendientes de pago.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <Activity className="h-5 w-5 text-blue-400" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-blue-800">
+                  {stats.proximasAtenciones.length} citas programadas para los próximos 7 días.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {!esProfesionalEnRengo && (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="flex items-center mb-4">
+            <BarChart3 className="h-6 w-6 text-medical-blue mr-2" />
+            <h2 className="text-xl font-semibold text-gray-800">Análisis y Estadísticas</h2>
+          </div>
+          <DashboardCharts profesionalId={isProfesional && user?.profesional_id ? user.profesional_id : undefined} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default Dashboard

@@ -1,0 +1,1 @@
+ALTER TABLE public.atenciones DISABLE ROW LEVEL SECURITY;
