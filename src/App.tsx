@@ -15,6 +15,7 @@ import AtencionForm from '@/components/AtencionForm'
 import TiposAtencionList from '@/components/TiposAtencionList'
 import TipoAtencionForm from '@/components/TipoAtencionForm'
 import Reportes from '@/components/Reportes'
+import PagosPendientes from '@/components/PagosPendientes'
 import Costos from '@/components/Costos'
 import Configuracion from '@/components/Configuracion'
 import UsuariosList from '@/components/UsuariosList'
@@ -63,6 +64,7 @@ const AppContent = () => {
             <Route path="/tipos-atencion" element={<AdminRoute><TiposAtencionList /></AdminRoute>} />
             <Route path="/tipos-atencion/nuevo" element={<AdminRoute><TipoAtencionFormWrapper /></AdminRoute>} />
             <Route path="/tipos-atencion/:id" element={<AdminRoute><TipoAtencionFormWrapper /></AdminRoute>} />
+            <Route path="/pagos-pendientes" element={<AdminRoute><PagosPendientes /></AdminRoute>} />
             <Route path="/reportes" element={<AdminRoute><Reportes /></AdminRoute>} />
             <Route path="/costos" element={<AdminRoute><Costos /></AdminRoute>} />
             <Route path="/usuarios" element={<AdminRoute><UsuariosList /></AdminRoute>} />

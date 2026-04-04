@@ -189,6 +189,28 @@ export const atencionesService = {
     return data || []
   },
 
+  async getPendientes(sucursalId?: string): Promise<Atencion[]> {
+    let query = supabase
+      .from('atenciones')
+      .select(`
+        *,
+        profesional:profesionales(*),
+        paciente:pacientes(*),
+        tipos_atencion(*)
+      `)
+      .eq('pagado', false)
+      .order('fecha', { ascending: true })
+
+    if (sucursalId) {
+      query = query.eq('sucursal_id', sucursalId)
+    }
+
+    const { data, error } = await query
+    
+    if (error) throw error
+    return data || []
+  },
+
   async create(atencion: Omit<Atencion, 'id' | 'created_at' | 'updated_at'>): Promise<Atencion> {
     const { data, error } = await supabase
       .from('atenciones')

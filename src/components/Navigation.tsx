@@ -11,7 +11,8 @@ import {
   DollarSign, 
   Settings,
   Activity,
-  Shield
+  Shield,
+  CreditCard
 } from 'lucide-react'
 
 const Navigation = () => {
@@ -40,6 +41,7 @@ const Navigation = () => {
     { path: '/profesionales', icon: Users, label: 'Profesionales', roles: ['admin'] },
     { path: '/pacientes', icon: UserPlus, label: 'Pacientes', roles: ['admin'] },
     { path: '/agenda', icon: Calendar, label: 'Agenda', roles: ['admin', 'profesional', 'usuario'] },
+    { path: '/pagos-pendientes', icon: CreditCard, label: 'Pagos Pendientes', roles: ['admin'] },
     { path: '/reportes', icon: FileText, label: 'Reportes', roles: ['admin'] },
     { path: '/costos', icon: DollarSign, label: 'Costos', roles: ['admin'] },
     { path: '/usuarios', icon: Shield, label: 'Usuarios', roles: ['admin'] },
