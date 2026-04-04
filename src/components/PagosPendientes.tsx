@@ -13,9 +13,18 @@ interface PacienteConDeuda extends Paciente {
   total_deuda: number
 }
 
+interface MesConDeuda {
+  mes: string
+  anio: string
+  clave: string
+  total_deuda: number
+  pacientes: PacienteConDeuda[]
+}
+
 const PagosPendientes = () => {
-  const [pacientesDeuda, setPacientesDeuda] = useState<PacienteConDeuda[]>([])
+  const [mesesDeuda, setMesesDeuda] = useState<MesConDeuda[]>([])
   const [loading, setLoading] = useState(true)
+  const [expandedMes, setExpandedMes] = useState<string | null>(null)
   const [expandedPaciente, setExpandedPaciente] = useState<string | null>(null)
   const { currentSucursal } = useSucursal()
 
@@ -24,31 +33,65 @@ const PagosPendientes = () => {
       setLoading(true)
       const data = await atencionesService.getPendientes(currentSucursal?.id)
       
-      // Agrupar atenciones por paciente
-      const agrupados = data.reduce((acc, atencion) => {
+      // Agrupar atenciones por mes y luego por paciente
+      const agrupadosPorMes = data.reduce((acc, atencion) => {
         if (!atencion.paciente) return acc
         
+        // Obtener el mes y año de la atención
+        const fecha = new Date(`${atencion.fecha}T00:00:00`)
+        const mesStr = format(fecha, 'MMMM', { locale: es })
+        const anioStr = format(fecha, 'yyyy')
+        const claveMes = `${anioStr}-${fecha.getMonth()}` // Para ordenar cronológicamente
+        
+        if (!acc[claveMes]) {
+          acc[claveMes] = {
+            mes: mesStr,
+            anio: anioStr,
+            clave: claveMes,
+            total_deuda: 0,
+            pacientes_map: {} as Record<string, PacienteConDeuda>
+          }
+        }
+        
         const pacienteId = atencion.paciente.id
-        if (!acc[pacienteId]) {
-          acc[pacienteId] = {
+        if (!acc[claveMes].pacientes_map[pacienteId]) {
+          acc[claveMes].pacientes_map[pacienteId] = {
             ...atencion.paciente,
             atenciones_pendientes: [],
             total_deuda: 0
           }
         }
         
-        acc[pacienteId].atenciones_pendientes.push(atencion)
-        acc[pacienteId].total_deuda += atencion.valor_cobrado
+        acc[claveMes].pacientes_map[pacienteId].atenciones_pendientes.push(atencion)
+        acc[claveMes].pacientes_map[pacienteId].total_deuda += atencion.valor_cobrado
+        acc[claveMes].total_deuda += atencion.valor_cobrado
         
         return acc
-      }, {} as Record<string, PacienteConDeuda>)
+      }, {} as Record<string, any>)
 
-      // Convertir a array y ordenar por nombre
-      const arrayPacientes = Object.values(agrupados).sort((a, b) => 
-        a.nombre.localeCompare(b.nombre)
-      )
+      // Convertir a arrays y ordenar
+      const arrayMeses = Object.values(agrupadosPorMes).map(mesGroup => {
+        const pacientesArray = Object.values(mesGroup.pacientes_map as Record<string, PacienteConDeuda>).sort((a, b) => 
+          a.nombre.localeCompare(b.nombre)
+        )
+        return {
+          mes: mesGroup.mes,
+          anio: mesGroup.anio,
+          clave: mesGroup.clave,
+          total_deuda: mesGroup.total_deuda,
+          pacientes: pacientesArray
+        } as MesConDeuda
+      }).sort((a, b) => {
+        // Ordenar meses del más reciente al más antiguo
+        return b.clave.localeCompare(a.clave)
+      })
       
-      setPacientesDeuda(arrayPacientes)
+      setMesesDeuda(arrayMeses)
+      
+      // Expandir el mes más reciente por defecto si hay datos
+      if (arrayMeses.length > 0 && !expandedMes) {
+        setExpandedMes(arrayMeses[0].clave)
+      }
     } catch (error) {
       console.error('Error loading pagos pendientes:', error)
       toast.error('Error al cargar los pagos pendientes')
@@ -61,7 +104,11 @@ const PagosPendientes = () => {
     loadPendientes()
   }, [currentSucursal])
 
-  const toggleExpand = (pacienteId: string) => {
+  const toggleExpandMes = (claveMes: string) => {
+    setExpandedMes(expandedMes === claveMes ? null : claveMes)
+  }
+
+  const toggleExpandPaciente = (pacienteId: string) => {
     setExpandedPaciente(expandedPaciente === pacienteId ? null : pacienteId)
   }
 
@@ -114,94 +161,122 @@ const PagosPendientes = () => {
         <div className="bg-orange-100 text-orange-800 px-4 py-2 rounded-lg font-semibold flex items-center shadow-sm">
           <AlertCircle className="w-5 h-5 mr-2" />
           Total Deuda Global: {formatCLP(
-            pacientesDeuda.reduce((sum, p) => sum + p.total_deuda, 0)
+            mesesDeuda.reduce((sum, mes) => sum + mes.total_deuda, 0)
           )}
         </div>
       </div>
 
-      {pacientesDeuda.length === 0 ? (
+      {mesesDeuda.length === 0 ? (
         <div className="bg-white rounded-lg shadow-md p-10 text-center">
           <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-800 mb-2">¡Todo al día!</h2>
           <p className="text-gray-600">No hay pagos pendientes registrados en el sistema.</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {pacientesDeuda.map((paciente) => (
-            <div key={paciente.id} className="bg-white rounded-lg shadow-md overflow-hidden transition-all duration-200">
+        <div className="space-y-6">
+          {mesesDeuda.map((mesGroup) => (
+            <div key={mesGroup.clave} className="bg-white rounded-lg shadow-md overflow-hidden">
               <div 
-                className="p-4 cursor-pointer hover:bg-gray-50 flex justify-between items-center border-b border-transparent"
-                onClick={() => toggleExpand(paciente.id)}
+                className="bg-medical-blue text-white p-4 cursor-pointer flex justify-between items-center transition-colors hover:bg-blue-700"
+                onClick={() => toggleExpandMes(mesGroup.clave)}
               >
-                <div className="flex items-center space-x-4">
-                  <div className="bg-blue-100 p-3 rounded-full text-medical-blue">
-                    <User className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-800">{paciente.nombre}</h3>
-                    <p className="text-sm text-gray-500">
-                      {paciente.atenciones_pendientes.length} sesión(es) pendiente(s)
-                    </p>
-                  </div>
+                <div className="flex items-center space-x-3">
+                  <Calendar className="w-6 h-6" />
+                  <h2 className="text-xl font-bold capitalize">{mesGroup.mes} {mesGroup.anio}</h2>
+                  <span className="bg-white text-medical-blue text-xs font-bold px-2 py-1 rounded-full ml-3">
+                    {mesGroup.pacientes.length} paciente(s)
+                  </span>
                 </div>
-                <div className="flex items-center space-x-6">
+                <div className="flex items-center space-x-4">
                   <div className="text-right">
-                    <p className="text-sm text-gray-500">Total a pagar</p>
-                    <p className="text-lg font-bold text-red-600">{formatCLP(paciente.total_deuda)}</p>
+                    <p className="text-xs text-blue-100 uppercase tracking-wider">Deuda del mes</p>
+                    <p className="text-lg font-bold">{formatCLP(mesGroup.total_deuda)}</p>
                   </div>
-                  <button className="text-gray-400 hover:text-gray-600">
-                    {expandedPaciente === paciente.id ? <ChevronUp /> : <ChevronDown />}
-                  </button>
+                  {expandedMes === mesGroup.clave ? <ChevronUp /> : <ChevronDown />}
                 </div>
               </div>
 
-              {expandedPaciente === paciente.id && (
-                <div className="p-4 bg-gray-50 border-t border-gray-200">
-                  <div className="flex justify-end mb-4">
-                    <button
-                      onClick={() => handleMarcarTodoPagado(paciente)}
-                      className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm text-sm font-medium"
-                    >
-                      <CheckCircle2 className="w-4 h-4 mr-2" />
-                      Marcar todo como pagado
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {paciente.atenciones_pendientes.map((atencion) => (
-                      <div key={atencion.id} className="bg-white p-4 rounded-lg border border-gray-200 flex justify-between items-center shadow-sm">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1 mr-4">
+              {expandedMes === mesGroup.clave && (
+                <div className="p-4 space-y-4 bg-gray-50">
+                  {mesGroup.pacientes.map((paciente) => (
+                    <div key={paciente.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden transition-all duration-200">
+                      <div 
+                        className="p-4 cursor-pointer hover:bg-gray-50 flex justify-between items-center border-b border-transparent"
+                        onClick={() => toggleExpandPaciente(paciente.id)}
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className="bg-blue-100 p-3 rounded-full text-medical-blue">
+                            <User className="w-6 h-6" />
+                          </div>
                           <div>
-                            <p className="text-xs text-gray-500 flex items-center"><Calendar className="w-3 h-3 mr-1"/> Fecha</p>
-                            <p className="text-sm font-medium text-gray-800">
-                              {format(new Date(`${atencion.fecha}T${atencion.hora}`), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}
+                            <h3 className="text-lg font-semibold text-gray-800">{paciente.nombre}</h3>
+                            <p className="text-sm text-gray-500">
+                              {paciente.atenciones_pendientes.length} sesión(es) pendiente(s)
                             </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 flex items-center"><User className="w-3 h-3 mr-1"/> Profesional</p>
-                            <p className="text-sm font-medium text-gray-800">{atencion.profesional?.nombre}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500">Tipo de Atención</p>
-                            <p className="text-sm font-medium text-gray-800">
-                              {atencion.tipos_atencion?.nombre || atencion.tipo_atencion}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 flex items-center"><DollarSign className="w-3 h-3 mr-1"/> Valor</p>
-                            <p className="text-sm font-bold text-gray-800">{formatCLP(atencion.valor_cobrado)}</p>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleMarcarPagado(atencion.id)}
-                          className="px-3 py-1.5 bg-medical-blue text-white text-sm rounded hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap flex items-center"
-                        >
-                          <CheckCircle2 className="w-4 h-4 mr-1" />
-                          Pagó
-                        </button>
+                        <div className="flex items-center space-x-6">
+                          <div className="text-right">
+                            <p className="text-sm text-gray-500">Total a pagar</p>
+                            <p className="text-lg font-bold text-red-600">{formatCLP(paciente.total_deuda)}</p>
+                          </div>
+                          <button className="text-gray-400 hover:text-gray-600">
+                            {expandedPaciente === paciente.id ? <ChevronUp /> : <ChevronDown />}
+                          </button>
+                        </div>
                       </div>
-                    ))}
-                  </div>
+
+                      {expandedPaciente === paciente.id && (
+                        <div className="p-4 bg-gray-50 border-t border-gray-200">
+                          <div className="flex justify-end mb-4">
+                            <button
+                              onClick={() => handleMarcarTodoPagado(paciente)}
+                              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm text-sm font-medium"
+                            >
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                              Marcar todo como pagado
+                            </button>
+                          </div>
+                          
+                          <div className="space-y-3">
+                            {paciente.atenciones_pendientes.map((atencion) => (
+                              <div key={atencion.id} className="bg-white p-4 rounded-lg border border-gray-200 flex justify-between items-center shadow-sm">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1 mr-4">
+                                  <div>
+                                    <p className="text-xs text-gray-500 flex items-center"><Calendar className="w-3 h-3 mr-1"/> Fecha</p>
+                                    <p className="text-sm font-medium text-gray-800">
+                                      {format(new Date(`${atencion.fecha}T${atencion.hora}`), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-gray-500 flex items-center"><User className="w-3 h-3 mr-1"/> Profesional</p>
+                                    <p className="text-sm font-medium text-gray-800">{atencion.profesional?.nombre}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-gray-500">Tipo de Atención</p>
+                                    <p className="text-sm font-medium text-gray-800">
+                                      {atencion.tipos_atencion?.nombre || atencion.tipo_atencion}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-gray-500 flex items-center"><DollarSign className="w-3 h-3 mr-1"/> Valor</p>
+                                    <p className="text-sm font-bold text-gray-800">{formatCLP(atencion.valor_cobrado)}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleMarcarPagado(atencion.id)}
+                                  className="px-3 py-1.5 bg-medical-blue text-white text-sm rounded hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap flex items-center"
+                                >
+                                  <CheckCircle2 className="w-4 h-4 mr-1" />
+                                  Pagó
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
