@@ -24,6 +24,7 @@ export interface Paciente {
   email: string
   direccion: string
   notas: string
+  activo?: boolean
   sucursal_id?: string | null
   created_at: string
   updated_at: string
@@ -41,6 +42,7 @@ export interface Atencion {
   estado_asistencia?: 'pendiente' | 'asistio' | 'no_asistio' // Nuevo campo
   numero_boleta?: string // Nuevo campo para número de boleta
   observaciones: string
+  activo?: boolean
   sucursal_id: string
   created_at: string
   updated_at: string
@@ -80,6 +82,7 @@ export interface Costo {
   monto: number
   fecha: string
   recurrente: boolean
+  activo?: boolean
   sucursal_id: string
   created_at: string
   updated_at: string

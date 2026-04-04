@@ -2,6 +2,30 @@ import { supabase } from '@/lib/supabase'
 export { supabase }
 import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, CentroConfig, Usuario, Sucursal, ProfesionalComision } from '@/types/database'
 
+// Helper for audit logging
+export const auditService = {
+  async logAction(tableName: string, recordId: string, action: 'INSERT' | 'UPDATE' | 'SOFT_DELETE', oldData: any = null, newData: any = null) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      
+      if (!userId) return;
+
+      await supabase.from('audit_logs').insert([{
+        table_name: tableName,
+        record_id: recordId,
+        action: action,
+        old_data: oldData,
+        new_data: newData,
+        changed_by: userId
+      }]);
+    } catch (e) {
+      console.error('Failed to write audit log:', e);
+      // We don't throw here to avoid breaking the main flow if audit logging fails
+    }
+  }
+}
+
 // Servicios para Profesionales
 export const profesionalesService = {
   async getAll(sucursalId?: string): Promise<Profesional[]> {
@@ -71,6 +95,7 @@ export const pacientesService = {
     let query = supabase
       .from('pacientes')
       .select('*')
+      .eq('activo', true)
       .order('nombre')
 
     if (sucursalId) {
@@ -118,12 +143,15 @@ export const pacientesService = {
   },
 
   async delete(id: string): Promise<void> {
+    const oldData = await this.getById(id);
+    
     const { error } = await supabase
       .from('pacientes')
-      .delete()
+      .update({ activo: false })
       .eq('id', id)
     
-    if (error) throw error
+    if (error) throw error;
+    if (oldData) await auditService.logAction('pacientes', id, 'SOFT_DELETE', oldData);
   }
 }
 
@@ -138,6 +166,7 @@ export const atencionesService = {
         paciente:pacientes(*),
         tipos_atencion(*)
       `)
+      .eq('activo', true)
       .order('fecha', { ascending: false })
 
     if (sucursalId) {
@@ -175,6 +204,7 @@ export const atencionesService = {
         paciente:pacientes(*),
         tipos_atencion(*)
       `)
+      .eq('activo', true)
       .gte('fecha', startDate)
       .lte('fecha', endDate)
       .order('fecha', { ascending: false })
@@ -198,6 +228,7 @@ export const atencionesService = {
         paciente:pacientes(*),
         tipos_atencion(*)
       `)
+      .eq('activo', true)
       .eq('pagado', false)
       .order('fecha', { ascending: true })
 
@@ -235,12 +266,15 @@ export const atencionesService = {
   },
 
   async delete(id: string): Promise<void> {
+    const oldData = await this.getById(id);
+    
     const { error } = await supabase
       .from('atenciones')
-      .delete()
+      .update({ activo: false })
       .eq('id', id)
     
-    if (error) throw error
+    if (error) throw error;
+    if (oldData) await auditService.logAction('atenciones', id, 'SOFT_DELETE', oldData);
   }
 }
 
@@ -250,6 +284,7 @@ export const costosService = {
     const { data, error } = await supabase
       .from('costos')
       .select('*')
+      .eq('activo', true)
       .order('fecha', { ascending: false })
     
     if (error) throw error
@@ -260,6 +295,7 @@ export const costosService = {
     const { data, error } = await supabase
       .from('costos')
       .select('*')
+      .eq('activo', true)
       .eq('tipo', tipo)
       .order('fecha', { ascending: false })
     
@@ -271,6 +307,7 @@ export const costosService = {
     let query = supabase
       .from('costos')
       .select('*')
+      .eq('activo', true)
       .gte('fecha', startDate)
       .lte('fecha', endDate)
       .order('fecha', { ascending: false })
@@ -311,7 +348,7 @@ export const costosService = {
   async delete(id: string): Promise<void> {
     const { error } = await supabase
       .from('costos')
-      .delete()
+      .update({ activo: false })
       .eq('id', id)
     
     if (error) throw error
