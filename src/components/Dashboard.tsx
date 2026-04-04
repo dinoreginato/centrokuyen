@@ -22,6 +22,7 @@ const Dashboard = () => {
     atencionesPendientes: 0,
     proximasAtenciones: [] as any[]
   })
+  const [selectedMonth, setSelectedMonth] = useState(dateFormat(new Date(), 'yyyy-MM'))
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -30,7 +31,7 @@ const Dashboard = () => {
     return () => {
       autoNotificationService.stop()
     }
-  }, [currentSucursal])
+  }, [currentSucursal, selectedMonth])
   
   const checkNotifications = async () => {
     try {
@@ -57,7 +58,8 @@ const Dashboard = () => {
     try {
       setLoading(true)
       
-      const currentDate = new Date()
+      const [year, month] = selectedMonth.split('-').map(Number)
+      const currentDate = new Date(year, month - 1, 1)
       const startOfCurrentMonth = startOfMonth(currentDate)
       const endOfCurrentMonth = endOfMonth(currentDate)
       
@@ -169,10 +171,18 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-3xl font-bold text-gray-800">Dashboard Principal</h1>
-        <div className="text-sm text-gray-500">
-          {dateFormat(new Date(), 'EEEE d MMMM yyyy', { locale: es })}
+        <div className="flex items-center space-x-4">
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-medical-blue focus:border-transparent text-sm"
+          />
+          <div className="text-sm text-gray-500 hidden sm:block">
+            {dateFormat(new Date(), 'EEEE d MMMM yyyy', { locale: es })}
+          </div>
         </div>
       </div>
 
