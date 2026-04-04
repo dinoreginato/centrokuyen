@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion } from '@/types/database'
 import { atencionesService } from '@/utils/supabase'
-import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from 'date-fns'
+import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfMonth, endOfMonth, isSameMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 const Agenda = () => {
@@ -16,13 +16,14 @@ const Agenda = () => {
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [currentWeek, setCurrentWeek] = useState(new Date())
-  const [viewMode, setViewMode] = useState<'week' | 'day'>('week')
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week')
 
   useEffect(() => {
     if (currentSucursal) {
       loadData()
     }
-  }, [currentWeek, selectedDate, currentSucursal])
+  }, [currentMonth, currentWeek, selectedDate, currentSucursal])
 
   const loadData = async () => {
     try {
@@ -42,7 +43,12 @@ const Agenda = () => {
     }
   }
 
-  const daysToShow = viewMode === 'week' 
+  const daysToShow = viewMode === 'month'
+    ? eachDayOfInterval({
+        start: startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 }),
+        end: endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 })
+      })
+    : viewMode === 'week' 
     ? eachDayOfInterval({
         start: startOfWeek(currentWeek, { weekStartsOn: 1 }),
         end: endOfWeek(currentWeek, { weekStartsOn: 1 })
@@ -50,7 +56,9 @@ const Agenda = () => {
     : [selectedDate]
 
   const navigate = (direction: 'prev' | 'next') => {
-    if (viewMode === 'week') {
+    if (viewMode === 'month') {
+      setCurrentMonth(prev => addDays(prev, direction === 'next' ? 30 : -30))
+    } else if (viewMode === 'week') {
       setCurrentWeek(prev => addDays(prev, direction === 'next' ? 7 : -7))
     } else {
       setSelectedDate(prev => addDays(prev, direction === 'next' ? 1 : -1))
@@ -197,6 +205,12 @@ Gracias 🙌🏻`
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <div className="flex items-center space-x-2 bg-gray-100 p-1 rounded-lg">
              <button
+               onClick={() => setViewMode('month')}
+               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'month' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+             >
+               Mes
+             </button>
+             <button
                onClick={() => setViewMode('week')}
                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'week' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
              >
@@ -219,7 +233,9 @@ Gracias 🙌🏻`
               ←
             </button>
             <h2 className="text-lg font-semibold text-gray-800 text-center min-w-[240px] capitalize">
-              {viewMode === 'week' 
+              {viewMode === 'month'
+                ? dateFormat(currentMonth, "MMMM yyyy", { locale: es })
+                : viewMode === 'week' 
                 ? `Semana del ${dateFormat(daysToShow[0], 'd MMM', { locale: es })}`
                 : dateFormat(selectedDate, "EEEE d 'de' MMMM yyyy", { locale: es })
               }
@@ -235,14 +251,16 @@ Gracias 🙌🏻`
         </div>
 
         <div className="overflow-x-auto pb-4">
-          <div className={`grid gap-3 ${viewMode === 'week' ? 'grid-cols-1 md:grid-cols-7 min-w-[1000px] md:min-w-0' : 'grid-cols-1'}`}>
+          <div className={`grid gap-3 ${viewMode === 'month' ? 'grid-cols-1 md:grid-cols-7 min-w-[1000px] md:min-w-0' : viewMode === 'week' ? 'grid-cols-1 md:grid-cols-7 min-w-[1000px] md:min-w-0' : 'grid-cols-1'}`}>
             {daysToShow.map((day) => {
               const dayAppointments = atenciones
                 .filter((a) => isSameDay(parseISO(a.fecha), day))
                 .sort((a, b) => a.hora.localeCompare(b.hora))
+              
+              const isCurrentMonth = viewMode === 'month' ? isSameMonth(day, currentMonth) : true
 
               return (
-                <div key={day.toISOString()} className="flex flex-col bg-white rounded-lg border border-gray-200 shadow-sm h-full">
+                <div key={day.toISOString()} className={`flex flex-col bg-white rounded-lg border shadow-sm h-full ${!isCurrentMonth ? 'opacity-50' : 'border-gray-200'}`}>
                   <div className={`p-3 text-center border-b ${
                     isSameDay(day, new Date()) 
                       ? 'bg-blue-50 text-blue-800 border-blue-100' 

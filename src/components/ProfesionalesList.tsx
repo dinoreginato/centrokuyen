@@ -12,6 +12,8 @@ const ProfesionalesList = () => {
   const [profesionales, setProfesionales] = useState<Profesional[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 9
 
   useEffect(() => {
     loadProfesionales()
@@ -50,6 +52,17 @@ const ProfesionalesList = () => {
     prof.especialidad.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (prof.email && prof.email.toLowerCase().includes(searchTerm.toLowerCase()))
   )
+
+  const totalPages = Math.ceil(filteredProfesionales.length / itemsPerPage)
+  const paginatedProfesionales = filteredProfesionales.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
+
+  // Reset page when searching
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm])
 
   if (loading) {
     return (
@@ -92,7 +105,7 @@ const ProfesionalesList = () => {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredProfesionales.map((profesional) => (
+            {paginatedProfesionales.map((profesional) => (
               <div key={profesional.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center space-x-3">
@@ -155,6 +168,28 @@ const ProfesionalesList = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="mt-6 flex justify-center items-center space-x-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 hover:bg-gray-50"
+            >
+              Anterior
+            </button>
+            <span className="text-gray-600">
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 hover:bg-gray-50"
+            >
+              Siguiente
+            </button>
           </div>
         )}
       </div>

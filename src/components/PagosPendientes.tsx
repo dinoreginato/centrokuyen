@@ -174,7 +174,7 @@ const PagosPendientes = () => {
                           <div>
                             <p className="text-xs text-gray-500 flex items-center"><Calendar className="w-3 h-3 mr-1"/> Fecha</p>
                             <p className="text-sm font-medium text-gray-800">
-                              {format(new Date(`${atencion.fecha}T${atencion.hora}`), "dd 'de' MMMM, HH:mm", { locale: es })}
+                              {format(new Date(`${atencion.fecha}T${atencion.hora}`), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}
                             </p>
                           </div>
                           <div>
