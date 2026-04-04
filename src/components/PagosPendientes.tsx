@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { atencionesService } from '@/utils/supabase'
 import { Atencion, Paciente } from '@/types/database'
 import { useSucursal } from '@/contexts/SucursalContext'
@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { CheckCircle2, Calendar, User, DollarSign, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { formatCurrency } from '@/utils/currency'
+import { formatCLP } from '@/utils/currency'
 
 interface PacienteConDeuda extends Paciente {
   atenciones_pendientes: Atencion[]
@@ -17,12 +17,12 @@ const PagosPendientes = () => {
   const [pacientesDeuda, setPacientesDeuda] = useState<PacienteConDeuda[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedPaciente, setExpandedPaciente] = useState<string | null>(null)
-  const { sucursal } = useSucursal()
+  const { currentSucursal } = useSucursal()
 
   const loadPendientes = async () => {
     try {
       setLoading(true)
-      const data = await atencionesService.getPendientes(sucursal?.id)
+      const data = await atencionesService.getPendientes(currentSucursal?.id)
       
       // Agrupar atenciones por paciente
       const agrupados = data.reduce((acc, atencion) => {
@@ -59,7 +59,7 @@ const PagosPendientes = () => {
 
   useEffect(() => {
     loadPendientes()
-  }, [sucursal])
+  }, [currentSucursal])
 
   const toggleExpand = (pacienteId: string) => {
     setExpandedPaciente(expandedPaciente === pacienteId ? null : pacienteId)
@@ -113,7 +113,7 @@ const PagosPendientes = () => {
         </div>
         <div className="bg-orange-100 text-orange-800 px-4 py-2 rounded-lg font-semibold flex items-center shadow-sm">
           <AlertCircle className="w-5 h-5 mr-2" />
-          Total Deuda Global: {formatCurrency(
+          Total Deuda Global: {formatCLP(
             pacientesDeuda.reduce((sum, p) => sum + p.total_deuda, 0)
           )}
         </div>
@@ -147,7 +147,7 @@ const PagosPendientes = () => {
                 <div className="flex items-center space-x-6">
                   <div className="text-right">
                     <p className="text-sm text-gray-500">Total a pagar</p>
-                    <p className="text-lg font-bold text-red-600">{formatCurrency(paciente.total_deuda)}</p>
+                    <p className="text-lg font-bold text-red-600">{formatCLP(paciente.total_deuda)}</p>
                   </div>
                   <button className="text-gray-400 hover:text-gray-600">
                     {expandedPaciente === paciente.id ? <ChevronUp /> : <ChevronDown />}
@@ -189,7 +189,7 @@ const PagosPendientes = () => {
                           </div>
                           <div>
                             <p className="text-xs text-gray-500 flex items-center"><DollarSign className="w-3 h-3 mr-1"/> Valor</p>
-                            <p className="text-sm font-bold text-gray-800">{formatCurrency(atencion.valor_cobrado)}</p>
+                            <p className="text-sm font-bold text-gray-800">{formatCLP(atencion.valor_cobrado)}</p>
                           </div>
                         </div>
                         <button
