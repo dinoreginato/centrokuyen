@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Save, X, User, Stethoscope, DollarSign, Clock, Calendar, FileText } from 'lucide-react'
+import { Save, X, User, Stethoscope, DollarSign, Clock, Calendar, FileText, Repeat } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { Profesional, Paciente, TipoAtencion } from '@/types/database'
 import { atencionesService, profesionalesService, pacientesService, tiposAtencionService } from '@/utils/supabase'
+import { addWeeks, format, parseISO } from 'date-fns'
 
 const AtencionForm = () => {
   const navigate = useNavigate()
@@ -32,7 +33,8 @@ const AtencionForm = () => {
     valor_cobrado: 0,
     pagado: false,
     numero_boleta: '',
-    observaciones: ''
+    observaciones: '',
+    recurrencia: 1 // 1 = Solo esta sesión, 4 = Plan Mensual (4 sesiones), etc.
   })
 
   // Estado para buscador de pacientes
@@ -101,7 +103,8 @@ const AtencionForm = () => {
           valor_cobrado: atencion.valor_cobrado,
           pagado: atencion.pagado,
           numero_boleta: atencion.numero_boleta || '',
-          observaciones: atencion.observaciones
+          observaciones: atencion.observaciones,
+          recurrencia: 1
         })
       }
     } catch (error) {
@@ -157,13 +160,38 @@ const AtencionForm = () => {
       }
 
       if (isEditing) {
-        // Al editar, no cambiamos la sucursal original a menos que sea explícito, 
-        // pero aquí mantenemos la lógica simple.
-        await atencionesService.update(id!, dataToSave)
+        // Al editar, solo modificamos la cita actual
+        const { recurrencia, ...updateData } = dataToSave
+        await atencionesService.update(id!, updateData)
         toast.success('Atención actualizada exitosamente')
       } else {
-        await atencionesService.create(dataToSave)
-        toast.success('Atención creada exitosamente')
+        // Si es nueva y tiene recurrencia, crear múltiples citas semanales
+        const sesiones = formData.recurrencia || 1
+        const { recurrencia, ...baseData } = dataToSave
+        
+        if (sesiones > 1) {
+          const promesas = []
+          let currentDate = parseISO(baseData.fecha)
+          
+          for (let i = 0; i < sesiones; i++) {
+            const sesionData = {
+              ...baseData,
+              fecha: format(currentDate, 'yyyy-MM-dd'),
+              observaciones: sesiones > 1 
+                ? `${baseData.observaciones}\n(Sesión ${i + 1} de ${sesiones} - Plan Mensual)`
+                : baseData.observaciones
+            }
+            promesas.push(atencionesService.create(sesionData))
+            // Avanzar a la misma hora de la próxima semana
+            currentDate = addWeeks(currentDate, 1)
+          }
+          
+          await Promise.all(promesas)
+          toast.success(`Se crearon ${sesiones} sesiones semanales exitosamente`)
+        } else {
+          await atencionesService.create(baseData)
+          toast.success('Atención creada exitosamente')
+        }
       }
       
       navigate('/agenda')
@@ -436,18 +464,46 @@ const AtencionForm = () => {
         </div>
 
         {!esProfesionalEnRengo && (
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="pagado"
-              name="pagado"
-              checked={formData.pagado}
-              onChange={handleChange}
-              className="h-4 w-4 text-medical-blue focus:ring-medical-blue border-gray-300 rounded"
-            />
-            <label htmlFor="pagado" className="ml-2 block text-sm text-gray-900">
-              Atención pagada
-            </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="flex flex-col justify-center">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="pagado"
+                  name="pagado"
+                  checked={formData.pagado}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-medical-blue focus:ring-medical-blue border-gray-300 rounded"
+                />
+                <label htmlFor="pagado" className="ml-2 block text-sm text-gray-900">
+                  Atención pagada
+                </label>
+              </div>
+            </div>
+
+            {!isEditing && (
+              <div>
+                <label htmlFor="recurrencia" className="block text-sm font-medium text-gray-700 mb-2">
+                  Plan / Recurrencia
+                </label>
+                <div className="relative">
+                  <Repeat className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <select
+                    id="recurrencia"
+                    name="recurrencia"
+                    value={formData.recurrencia}
+                    onChange={handleChange}
+                    className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue appearance-none"
+                  >
+                    <option value={1}>Sesión Única</option>
+                    <option value={4}>Plan Mensual (4 sesiones, 1 por semana)</option>
+                    <option value={8}>Plan Bimestral (8 sesiones, 1 por semana)</option>
+                    <option value={12}>Plan Trimestral (12 sesiones, 1 por semana)</option>
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Se agendarán automáticamente a la misma hora en las semanas siguientes.</p>
+              </div>
+            )}
           </div>
         )}
 
