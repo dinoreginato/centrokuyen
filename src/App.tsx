@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
-import { SucursalProvider } from '@/contexts/SucursalContext'
+import { SucursalProvider, useSucursal } from '@/contexts/SucursalContext'
 import Navigation from '@/components/Navigation'
 import Header from '@/components/Header'
 import Login from '@/components/Login'
@@ -37,6 +37,25 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   return user?.rol === 'admin' ? <>{children}</> : <Navigate to="/" replace />
 }
 
+// Paciente Route Component (Admins OR Dalcahue Professionals)
+const PacienteRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth()
+  const { currentSucursal } = useSucursal()
+  
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
+      </div>
+    )
+  }
+  
+  const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
+  const isAuthorized = user?.rol === 'admin' || (user?.rol === 'profesional' && isDalcahue)
+  
+  return isAuthorized ? <>{children}</> : <Navigate to="/" replace />
+}
+
 // Main App Content
 const AppContent = () => {
   const { isAuthenticated } = useAuth()
@@ -58,9 +77,9 @@ const AppContent = () => {
             <Route path="/profesionales" element={<AdminRoute><ProfesionalesList /></AdminRoute>} />
             <Route path="/profesionales/nuevo" element={<AdminRoute><ProfesionalForm /></AdminRoute>} />
             <Route path="/profesionales/:id" element={<AdminRoute><ProfesionalForm /></AdminRoute>} />
-            <Route path="/pacientes" element={<AdminRoute><PacientesList /></AdminRoute>} />
-            <Route path="/pacientes/nuevo" element={<AdminRoute><PacienteForm /></AdminRoute>} />
-            <Route path="/pacientes/:id" element={<AdminRoute><PacienteForm /></AdminRoute>} />
+            <Route path="/pacientes" element={<PacienteRoute><PacientesList /></PacienteRoute>} />
+            <Route path="/pacientes/nuevo" element={<PacienteRoute><PacienteForm /></PacienteRoute>} />
+            <Route path="/pacientes/:id" element={<PacienteRoute><PacienteForm /></PacienteRoute>} />
             <Route path="/tipos-atencion" element={<AdminRoute><TiposAtencionList /></AdminRoute>} />
             <Route path="/tipos-atencion/nuevo" element={<AdminRoute><TipoAtencionFormWrapper /></AdminRoute>} />
             <Route path="/tipos-atencion/:id" element={<AdminRoute><TipoAtencionFormWrapper /></AdminRoute>} />

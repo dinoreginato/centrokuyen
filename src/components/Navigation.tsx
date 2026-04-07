@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSucursal } from '@/contexts/SucursalContext'
 import { centroConfigService } from '@/utils/supabase'
 import { 
   Home, 
@@ -18,6 +19,7 @@ import {
 const Navigation = () => {
   const location = useLocation()
   const { user } = useAuth()
+  const { currentSucursal } = useSucursal()
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [nombreCentro, setNombreCentro] = useState('Centro Kuyen')
 
@@ -36,10 +38,12 @@ const Navigation = () => {
     loadConfig()
   }, [])
 
+  const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
+
   const navItems = [
     { path: '/', icon: Home, label: 'Dashboard', roles: ['admin', 'profesional', 'usuario'] },
     { path: '/profesionales', icon: Users, label: 'Profesionales', roles: ['admin'] },
-    { path: '/pacientes', icon: UserPlus, label: 'Pacientes', roles: ['admin'] },
+    { path: '/pacientes', icon: UserPlus, label: 'Pacientes', roles: isDalcahue ? ['admin', 'profesional'] : ['admin'] },
     { path: '/agenda', icon: Calendar, label: 'Agenda', roles: ['admin', 'profesional', 'usuario'] },
     { path: '/pagos-pendientes', icon: CreditCard, label: 'Pagos Pendientes', roles: ['admin'] },
     { path: '/reportes', icon: FileText, label: 'Reportes', roles: ['admin'] },

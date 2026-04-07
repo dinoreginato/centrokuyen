@@ -168,6 +168,8 @@ const Dashboard = () => {
 
   const isProfesional = user?.rol === 'profesional'
   const esProfesionalEnRengo = isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
+  const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
+  const canManagePacientes = !isProfesional || (isProfesional && isDalcahue)
 
   return (
     <div className="space-y-6">
@@ -259,7 +261,7 @@ const Dashboard = () => {
             </Link>
           )}
 
-          {!isProfesional && (
+          {canManagePacientes && (
             <Link
               to="/pacientes/nuevo"
               className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
