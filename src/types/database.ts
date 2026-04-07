@@ -76,7 +76,7 @@ export interface PagoProfesional {
 
 export interface Costo {
   id: string
-  tipo: 'fijo' | 'variable'
+  tipo: 'fijo' | 'variable' | 'aporte'
   categoria: string
   descripcion: string
   monto: number

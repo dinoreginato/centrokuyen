@@ -11,7 +11,7 @@ interface CostoFormProps {
 }
 
 interface CostoFormData {
-  tipo: 'fijo' | 'variable';
+  tipo: 'fijo' | 'variable' | 'aporte';
   categoria: string;
   descripcion: string;
   monto: number;
@@ -39,6 +39,13 @@ const CATEGORIAS_VARIABLES = [
   'Capacitación',
   'Eventos',
   'Otros variables'
+];
+
+const CATEGORIAS_APORTES = [
+  'Inversión inicial',
+  'Aporte extraordinario',
+  'Préstamo de socio',
+  'Otros aportes'
 ];
 
 export default function CostoForm({ costo, onSuccess, onCancel }: CostoFormProps) {
@@ -86,19 +93,19 @@ export default function CostoForm({ costo, onSuccess, onCancel }: CostoFormProps
     }
   };
 
-  const categorias = tipoSeleccionado === 'fijo' ? CATEGORIAS_FIJAS : CATEGORIAS_VARIABLES;
+  const categorias = tipoSeleccionado === 'fijo' ? CATEGORIAS_FIJAS : tipoSeleccionado === 'variable' ? CATEGORIAS_VARIABLES : CATEGORIAS_APORTES;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-semibold mb-4">
-          {costo ? 'Editar Costo' : 'Nuevo Costo'}
+          {costo ? (costo.tipo === 'aporte' ? 'Editar Aporte' : 'Editar Costo') : (tipoSeleccionado === 'aporte' ? 'Nuevo Aporte' : 'Nuevo Costo')}
         </h2>
         
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tipo de Costo
+              Tipo de Registro
             </label>
             <select
               {...register('tipo', { required: 'El tipo es requerido' })}
@@ -106,6 +113,7 @@ export default function CostoForm({ costo, onSuccess, onCancel }: CostoFormProps
             >
               <option value="fijo">Costo Fijo</option>
               <option value="variable">Costo Variable</option>
+              <option value="aporte">Aporte (Ingreso)</option>
             </select>
             {errors.tipo && (
               <p className="text-red-500 text-sm mt-1">{errors.tipo.message}</p>

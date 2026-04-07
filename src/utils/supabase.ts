@@ -291,7 +291,7 @@ export const costosService = {
     return data || []
   },
 
-  async getByTipo(tipo: 'fijo' | 'variable'): Promise<Costo[]> {
+  async getByTipo(tipo: 'fijo' | 'variable' | 'aporte'): Promise<Costo[]> {
     const { data, error } = await supabase
       .from('costos')
       .select('*')

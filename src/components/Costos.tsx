@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, DollarSign, TrendingDown, Home, Wrench } from 'lucide-react'
+import { Plus, Edit, Trash2, DollarSign, TrendingDown, Home, Wrench, ArrowUpCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Costo } from '@/types/database'
@@ -13,7 +13,7 @@ const Costos = () => {
   const { currentSucursal } = useSucursal()
   const [costos, setCostos] = useState<Costo[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedTipo, setSelectedTipo] = useState<'todos' | 'fijo' | 'variable'>('todos')
+  const [selectedTipo, setSelectedTipo] = useState<'todos' | 'fijo' | 'variable' | 'aporte'>('todos')
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'))
   const [showForm, setShowForm] = useState(false)
   const [editingCosto, setEditingCosto] = useState<Costo | undefined>()
@@ -88,11 +88,13 @@ const Costos = () => {
   const calcularTotales = () => {
     const costosFijos = costos.filter(c => c.tipo === 'fijo')
     const costosVariables = costos.filter(c => c.tipo === 'variable')
+    const aportes = costos.filter(c => c.tipo === 'aporte')
     
     return {
       totalFijos: costosFijos.reduce((sum, c) => sum + c.monto, 0),
       totalVariables: costosVariables.reduce((sum, c) => sum + c.monto, 0),
-      totalGeneral: costos.reduce((sum, c) => sum + c.monto, 0)
+      totalAportes: aportes.reduce((sum, c) => sum + c.monto, 0),
+      totalGastos: (costosFijos.reduce((sum, c) => sum + c.monto, 0) + costosVariables.reduce((sum, c) => sum + c.monto, 0))
     }
   }
 
@@ -112,10 +114,10 @@ const Costos = () => {
         <h1 className="text-2xl font-bold text-gray-800">Gestión de Costos</h1>
         <button
           onClick={handleNewCosto}
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+          className="bg-medical-blue hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
         >
           <Plus className="h-5 w-5" />
-          <span>Nuevo Costo</span>
+          <span>Nuevo Registro</span>
         </button>
       </div>
 
@@ -132,22 +134,35 @@ const Costos = () => {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Costo</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Registro</label>
             <select
               value={selectedTipo}
-              onChange={(e) => setSelectedTipo(e.target.value as 'todos' | 'fijo' | 'variable')}
+              onChange={(e) => setSelectedTipo(e.target.value as 'todos' | 'fijo' | 'variable' | 'aporte')}
               className="px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
             >
               <option value="todos">Todos</option>
               <option value="fijo">Costos Fijos</option>
               <option value="variable">Costos Variables</option>
+              <option value="aporte">Aportes (Ingresos)</option>
             </select>
           </div>
         </div>
       </div>
 
       {/* Resumen financiero */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Aportes (Ingresos)</p>
+              <p className="text-3xl font-bold text-green-600">{formatCLP(totales.totalAportes)}</p>
+            </div>
+            <div className="bg-green-600 text-white rounded-full p-3">
+              <ArrowUpCircle className="h-6 w-6" />
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white p-6 rounded-lg shadow-md">
           <div className="flex items-center justify-between">
             <div>
@@ -175,8 +190,8 @@ const Costos = () => {
         <div className="bg-white p-6 rounded-lg shadow-md">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Costos</p>
-              <p className="text-3xl font-bold text-red-600">{formatCLP(totales.totalGeneral)}</p>
+              <p className="text-sm font-medium text-gray-600">Total Gastos</p>
+              <p className="text-3xl font-bold text-red-600">{formatCLP(totales.totalGastos)}</p>
             </div>
             <div className="bg-red-600 text-white rounded-full p-3">
               <DollarSign className="h-6 w-6" />
@@ -234,9 +249,11 @@ const Costos = () => {
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         costo.tipo === 'fijo' 
                           ? 'bg-blue-100 text-blue-800' 
-                          : 'bg-orange-100 text-orange-800'
+                          : costo.tipo === 'variable'
+                          ? 'bg-orange-100 text-orange-800'
+                          : 'bg-green-100 text-green-800'
                       }`}>
-                        {costo.tipo === 'fijo' ? 'Fijo' : 'Variable'}
+                        {costo.tipo === 'fijo' ? 'Fijo' : costo.tipo === 'variable' ? 'Variable' : 'Aporte'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -283,11 +300,23 @@ const Costos = () => {
 
       {/* Categorías sugeridas */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Categorías de Costos</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Categorías Sugeridas</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <h3 className="font-medium text-gray-700 mb-2 flex items-center">
-              <Home className="h-4 w-4 mr-2" />
+              <ArrowUpCircle className="h-4 w-4 mr-2 text-green-600" />
+              Aportes (Ingresos)
+            </h3>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• Inversión inicial</li>
+              <li>• Aporte extraordinario</li>
+              <li>• Préstamo de socio</li>
+              <li>• Otros aportes</li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="font-medium text-gray-700 mb-2 flex items-center">
+              <Home className="h-4 w-4 mr-2 text-blue-600" />
               Costos Fijos Comunes
             </h3>
             <ul className="text-sm text-gray-600 space-y-1">
@@ -301,7 +330,7 @@ const Costos = () => {
           </div>
           <div>
             <h3 className="font-medium text-gray-700 mb-2 flex items-center">
-              <Wrench className="h-4 w-4 mr-2" />
+              <Wrench className="h-4 w-4 mr-2 text-orange-600" />
               Costos Variables Comunes
             </h3>
             <ul className="text-sm text-gray-600 space-y-1">
