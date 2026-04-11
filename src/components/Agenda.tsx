@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion } from '@/types/database'
 import { atencionesService } from '@/utils/supabase'
-import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfMonth, endOfMonth, isSameMonth } from 'date-fns'
+import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfMonth, endOfMonth, isSameMonth, differenceInYears } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 const Agenda = () => {
@@ -169,6 +169,15 @@ Gracias 🙌🏻`
     return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`
   }
 
+  const getEdadPaciente = (atencion: Atencion) => {
+    const fechaNacimiento = atencion.paciente?.fecha_nacimiento
+    if (!fechaNacimiento) return null
+    const date = parseISO(fechaNacimiento)
+    if (Number.isNaN(date.getTime())) return null
+    const edad = differenceInYears(new Date(), date)
+    return edad >= 0 ? edad : null
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -310,6 +319,15 @@ Gracias 🙌🏻`
                             <div className="font-semibold text-gray-900 truncate" title={atencion.paciente?.nombre}>
                               {atencion.paciente?.nombre}
                             </div>
+
+                            {(() => {
+                              const edad = getEdadPaciente(atencion)
+                              return edad === null ? null : (
+                                <div className="text-gray-500 truncate text-[10px] mt-0.5">
+                                  {edad} años
+                                </div>
+                              )
+                            })()}
                             
                             {!user?.profesional_id && (
                               <div className="text-gray-500 truncate text-[10px] mt-0.5">

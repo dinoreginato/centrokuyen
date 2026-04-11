@@ -14,6 +14,7 @@ const PacienteForm = () => {
   const [formData, setFormData] = useState({
     nombre: '',
     rut: '',
+    fecha_nacimiento: '',
     telefono: '',
     email: '',
     direccion: '',
@@ -37,6 +38,7 @@ const PacienteForm = () => {
         setFormData({
           nombre: paciente.nombre,
           rut: paciente.rut,
+          fecha_nacimiento: paciente.fecha_nacimiento || '',
           telefono: paciente.telefono,
           email: paciente.email,
           direccion: paciente.direccion,
@@ -162,6 +164,20 @@ const PacienteForm = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-green focus:border-medical-green"
               placeholder="Ej: 12.345.678-9"
               required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="fecha_nacimiento" className="block text-sm font-medium text-gray-700 mb-2">
+              Fecha de nacimiento
+            </label>
+            <input
+              type="date"
+              id="fecha_nacimiento"
+              name="fecha_nacimiento"
+              value={formData.fecha_nacimiento}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-green focus:border-medical-green"
             />
           </div>
 

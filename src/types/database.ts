@@ -20,6 +20,7 @@ export interface Paciente {
   id: string
   nombre: string
   rut: string
+  fecha_nacimiento?: string | null
   telefono: string
   email: string
   direccion: string
