@@ -3,8 +3,8 @@ import { atencionesService } from '@/utils/supabase'
 import { Atencion, Paciente } from '@/types/database'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { toast } from 'sonner'
-import { CheckCircle2, Calendar, User, DollarSign, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
-import { format } from 'date-fns'
+import { CheckCircle2, Calendar, User, DollarSign, ChevronDown, ChevronUp, AlertCircle, MessageCircle } from 'lucide-react'
+import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { formatCLP } from '@/utils/currency'
 
@@ -27,6 +27,55 @@ const PagosPendientes = () => {
   const [expandedMes, setExpandedMes] = useState<string | null>(null)
   const [expandedPaciente, setExpandedPaciente] = useState<string | null>(null)
   const { currentSucursal } = useSucursal()
+
+  const normalizePhoneCL = (raw: string) => {
+    let phone = raw.replace(/\D/g, '')
+    if (phone.length === 9 && phone.startsWith('9')) return `56${phone}`
+    if (phone.length === 8) return `569${phone}`
+    return phone
+  }
+
+  const isOverdue = (atencion: Atencion) => {
+    const atencionDate = parseISO(atencion.fecha)
+    if (Number.isNaN(atencionDate.getTime())) return false
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return atencionDate < today
+  }
+
+  const isOverdue3Days = (atencion: Atencion) => {
+    const atencionDate = parseISO(atencion.fecha)
+    if (Number.isNaN(atencionDate.getTime())) return false
+    return differenceInCalendarDays(new Date(), atencionDate) >= 3
+  }
+
+  const getWhatsAppReminderLink = (paciente: PacienteConDeuda) => {
+    if (!paciente.telefono) return null
+    const phone = normalizePhoneCL(paciente.telefono)
+    if (!phone) return null
+
+    const atencionesAtrasadas = paciente.atenciones_pendientes
+      .filter(a => isOverdue(a))
+      .sort((a, b) => `${a.fecha}T${a.hora}`.localeCompare(`${b.fecha}T${b.hora}`))
+
+    if (atencionesAtrasadas.length === 0) return null
+
+    const total = atencionesAtrasadas.reduce((sum, a) => sum + (a.valor_cobrado || 0), 0)
+    const detalle = atencionesAtrasadas
+      .map((a, idx) => {
+        const fechaStr = format(parseISO(a.fecha), "dd/MM/yyyy", { locale: es })
+        const horaStr = a.hora?.substring(0, 5) || ''
+        const tipo = a.tipos_atencion?.nombre || a.tipo_atencion || 'Sesión'
+        const monto = formatCLP(a.valor_cobrado || 0)
+        const tag = isOverdue3Days(a) ? ' (3+ días)' : ''
+        return `${idx + 1}) ${fechaStr} ${horaStr} - ${tipo} - ${monto}${tag}`
+      })
+      .join('\n')
+
+    const mensaje = `Hola ${paciente.nombre}, te escribo para recordar el pago de sesiones pendientes:\n\n${detalle}\n\nTotal pendiente: ${formatCLP(total)}\n\nSi ya realizaste el pago, por favor ignora este mensaje. Muchas gracias.`
+
+    return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`
+  }
 
   const loadPendientes = async () => {
     try {
@@ -213,6 +262,9 @@ const PagosPendientes = () => {
                             <p className="text-sm text-gray-500">
                               {paciente.atenciones_pendientes.length} sesión(es) pendiente(s)
                             </p>
+                            <p className="text-xs text-red-600 font-medium mt-1">
+                              {paciente.atenciones_pendientes.filter(a => isOverdue(a)).length} atrasada(s)
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center space-x-6">
@@ -228,7 +280,20 @@ const PagosPendientes = () => {
 
                       {expandedPaciente === paciente.id && (
                         <div className="p-4 bg-gray-50 border-t border-gray-200">
-                          <div className="flex justify-end mb-4">
+                          <div className="flex flex-col sm:flex-row justify-end gap-2 mb-4">
+                            {getWhatsAppReminderLink(paciente) && (
+                              <button
+                                onClick={() => {
+                                  const link = getWhatsAppReminderLink(paciente)
+                                  if (link) window.open(link, '_blank')
+                                  else toast.error('Sin teléfono o sin sesiones atrasadas')
+                                }}
+                                className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm text-sm font-medium"
+                              >
+                                <MessageCircle className="w-4 h-4 mr-2" />
+                                Enviar recordatorio (WhatsApp)
+                              </button>
+                            )}
                             <button
                               onClick={() => handleMarcarTodoPagado(paciente)}
                               className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm text-sm font-medium"
@@ -247,6 +312,9 @@ const PagosPendientes = () => {
                                     <p className="text-sm font-medium text-gray-800">
                                       {format(new Date(`${atencion.fecha}T${atencion.hora}`), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}
                                     </p>
+                                    {isOverdue3Days(atencion) && (
+                                      <p className="text-[10px] text-red-600 font-semibold mt-1">Atrasado 3+ días</p>
+                                    )}
                                   </div>
                                   <div>
                                     <p className="text-xs text-gray-500 flex items-center"><User className="w-3 h-3 mr-1"/> Profesional</p>
