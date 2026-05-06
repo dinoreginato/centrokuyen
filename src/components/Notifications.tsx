@@ -164,18 +164,16 @@ const Notifications = ({ appointments }: NotificationsProps) => {
                 {notifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className={`p-4 border-l-4 hover:bg-gray-50 transition-colors ${
+                    className={`p-4 border-l-4 cursor-pointer hover:bg-gray-50 transition-colors ${
                       getNotificationColor(notification.type)
                     } ${!notification.read ? 'bg-blue-50' : ''}`}
+                    onClick={() => handleNotificationClick(notification)}
                   >
                     <div className="flex items-start space-x-3">
                       <div className="flex-shrink-0">
                         {getNotificationIcon(notification.type)}
                       </div>
-                      <div
-                        className="flex-1 min-w-0 cursor-pointer"
-                        onClick={() => handleNotificationClick(notification)}
-                      >
+                      <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start">
                           <p className="text-sm font-medium text-gray-900">
                             {notification.title}
@@ -190,7 +188,6 @@ const Notifications = ({ appointments }: NotificationsProps) => {
                       </div>
                       {!notification.read && (
                         <button
-                          onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation()
                             markAsRead(notification.id)
