@@ -13,7 +13,8 @@ import {
   Settings,
   Activity,
   Shield,
-  CreditCard
+  CreditCard,
+  Search
 } from 'lucide-react'
 
 const Navigation = () => {
@@ -45,6 +46,7 @@ const Navigation = () => {
     { path: '/profesionales', icon: Users, label: 'Profesionales', roles: ['admin'] },
     { path: '/pacientes', icon: UserPlus, label: 'Pacientes', roles: isDalcahue ? ['admin', 'profesional'] : ['admin'] },
     { path: '/agenda', icon: Calendar, label: 'Agenda', roles: ['admin', 'profesional', 'usuario'] },
+    { path: '/atenciones-por-paciente', icon: Search, label: 'Atenciones', roles: ['admin', 'profesional'] },
     { path: '/pagos-pendientes', icon: CreditCard, label: 'Pagos Pendientes', roles: ['admin'] },
     { path: '/reportes', icon: FileText, label: 'Reportes', roles: ['admin'] },
     { path: '/costos', icon: DollarSign, label: 'Costos', roles: ['admin'] },

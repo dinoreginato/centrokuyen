@@ -12,6 +12,7 @@ import PacientesList from '@/components/PacientesList'
 import PacienteForm from '@/components/PacienteForm'
 import Agenda from '@/components/Agenda'
 import AtencionForm from '@/components/AtencionForm'
+import AtencionesPorPaciente from '@/components/AtencionesPorPaciente'
 import TiposAtencionList from '@/components/TiposAtencionList'
 import TipoAtencionForm from '@/components/TipoAtencionForm'
 import Reportes from '@/components/Reportes'
@@ -35,6 +36,22 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   }
   
   return user?.rol === 'admin' ? <>{children}</> : <Navigate to="/" replace />
+}
+
+const StaffRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth()
+  
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
+      </div>
+    )
+  }
+  
+  const isAuthorized = user?.rol === 'admin' || user?.rol === 'profesional'
+  
+  return isAuthorized ? <>{children}</> : <Navigate to="/" replace />
 }
 
 // Paciente Route Component (Admins OR Dalcahue Professionals)
@@ -93,6 +110,7 @@ const AppContent = () => {
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/agenda/nueva" element={<AtencionForm />} />
             <Route path="/agenda/:id" element={<AtencionForm />} />
+            <Route path="/atenciones-por-paciente" element={<StaffRoute><AtencionesPorPaciente /></StaffRoute>} />
           </Routes>
         </main>
       </div>

@@ -242,6 +242,34 @@ export const atencionesService = {
     return data || []
   },
 
+  async getByPacienteId(pacienteId: string, sucursalId?: string, profesionalId?: string): Promise<Atencion[]> {
+    let query = supabase
+      .from('atenciones')
+      .select(`
+        *,
+        profesional:profesionales(*),
+        paciente:pacientes(*),
+        tipos_atencion(*)
+      `)
+      .eq('activo', true)
+      .eq('paciente_id', pacienteId)
+      .order('fecha', { ascending: false })
+      .order('hora', { ascending: false })
+
+    if (sucursalId) {
+      query = query.eq('sucursal_id', sucursalId)
+    }
+
+    if (profesionalId) {
+      query = query.eq('profesional_id', profesionalId)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+    return data || []
+  },
+
   async create(atencion: Omit<Atencion, 'id' | 'created_at' | 'updated_at'>): Promise<Atencion> {
     const { data, error } = await supabase
       .from('atenciones')
