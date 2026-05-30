@@ -87,9 +87,11 @@ export default function CostoForm({ costo, onSuccess, onCancel }: CostoFormProps
         toast.success('Costo creado exitosamente');
       }
       onSuccess();
-    } catch (error) {
-      toast.error('Error al guardar el costo');
-      console.error('Error:', error);
+    } catch (error: any) {
+      const rawMessage = String(error?.message || '').toLowerCase()
+      const isTipoAporteError = rawMessage.includes('costos_tipo_check') || (rawMessage.includes('tipo') && rawMessage.includes('aporte'))
+      toast.error(isTipoAporteError ? 'Falta actualizar la base de datos para permitir Aportes (Ingresos)' : 'Error al guardar el costo')
+      console.error('Error:', error)
     }
   };
 
