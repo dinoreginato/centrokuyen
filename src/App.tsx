@@ -13,6 +13,7 @@ import PacienteForm from '@/components/PacienteForm'
 import Agenda from '@/components/Agenda'
 import AtencionForm from '@/components/AtencionForm'
 import AtencionesPorPaciente from '@/components/AtencionesPorPaciente'
+import Disponibilidad from '@/components/Disponibilidad'
 import TiposAtencionList from '@/components/TiposAtencionList'
 import TipoAtencionForm from '@/components/TipoAtencionForm'
 import Reportes from '@/components/Reportes'
@@ -111,6 +112,7 @@ const AppContent = () => {
             <Route path="/agenda/nueva" element={<AtencionForm />} />
             <Route path="/agenda/:id" element={<AtencionForm />} />
             <Route path="/atenciones-por-paciente" element={<StaffRoute><AtencionesPorPaciente /></StaffRoute>} />
+            <Route path="/disponibilidad" element={<StaffRoute><Disponibilidad /></StaffRoute>} />
           </Routes>
         </main>
       </div>

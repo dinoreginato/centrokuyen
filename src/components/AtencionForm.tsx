@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { Save, X, User, Stethoscope, DollarSign, Clock, Calendar, FileText, Repeat } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
@@ -11,6 +11,7 @@ import { addWeeks, format, parseISO } from 'date-fns'
 const AtencionForm = () => {
   const navigate = useNavigate()
   const { id } = useParams()
+  const location = useLocation()
   const { currentSucursal } = useSucursal()
   const { user } = useAuth()
   const isEditing = !!id
@@ -44,6 +45,23 @@ const AtencionForm = () => {
   useEffect(() => {
     loadInitialData()
   }, [currentSucursal])
+
+  useEffect(() => {
+    if (isEditing) return
+    const params = new URLSearchParams(location.search)
+    const profesionalIdParam = params.get('profesional_id')
+    const fechaParam = params.get('fecha')
+    const horaParam = params.get('hora')
+    const pacienteIdParam = params.get('paciente_id')
+    setFormData(prev => {
+      const next = { ...prev }
+      if (fechaParam && !next.fecha) next.fecha = fechaParam
+      if (horaParam && !next.hora) next.hora = horaParam
+      if (pacienteIdParam && !next.paciente_id) next.paciente_id = pacienteIdParam
+      if (profesionalIdParam && !next.profesional_id && user?.rol !== 'profesional') next.profesional_id = profesionalIdParam
+      return next
+    })
+  }, [isEditing, location.search, user?.rol])
 
   useEffect(() => {
     if (isEditing) {

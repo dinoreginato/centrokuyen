@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 export { supabase }
-import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, CentroConfig, Usuario, Sucursal, ProfesionalComision } from '@/types/database'
+import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, CentroConfig, Usuario, Sucursal, ProfesionalComision, ProfesionalDisponibilidad } from '@/types/database'
 
 // Helper for audit logging
 export const auditService = {
@@ -219,6 +219,30 @@ export const atencionesService = {
     return data || []
   },
 
+  async getByProfesionalAndFecha(profesionalId: string, fecha: string, sucursalId?: string): Promise<Atencion[]> {
+    let query = supabase
+      .from('atenciones')
+      .select(`
+        *,
+        profesional:profesionales(*),
+        paciente:pacientes(*),
+        tipos_atencion(*)
+      `)
+      .eq('activo', true)
+      .eq('profesional_id', profesionalId)
+      .eq('fecha', fecha)
+      .order('hora', { ascending: true })
+
+    if (sucursalId) {
+      query = query.eq('sucursal_id', sucursalId)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+    return data || []
+  },
+
   async getPendientes(sucursalId?: string): Promise<Atencion[]> {
     let query = supabase
       .from('atenciones')
@@ -303,6 +327,39 @@ export const atencionesService = {
     
     if (error) throw error;
     if (oldData) await auditService.logAction('atenciones', id, 'SOFT_DELETE', oldData);
+  }
+}
+
+export const profesionalDisponibilidadService = {
+  async getByProfesionalId(profesionalId: string, sucursalId: string): Promise<ProfesionalDisponibilidad[]> {
+    const { data, error } = await supabase
+      .from('profesional_disponibilidad')
+      .select('*')
+      .eq('profesional_id', profesionalId)
+      .eq('sucursal_id', sucursalId)
+      .order('dia_semana', { ascending: true })
+      .order('hora_inicio', { ascending: true })
+
+    if (error) throw error
+    return data || []
+  },
+
+  async replaceSchedule(profesionalId: string, sucursalId: string, items: Omit<ProfesionalDisponibilidad, 'id' | 'created_at' | 'updated_at'>[]): Promise<void> {
+    const { error: deleteError } = await supabase
+      .from('profesional_disponibilidad')
+      .delete()
+      .eq('profesional_id', profesionalId)
+      .eq('sucursal_id', sucursalId)
+
+    if (deleteError) throw deleteError
+
+    if (items.length === 0) return
+
+    const { error: insertError } = await supabase
+      .from('profesional_disponibilidad')
+      .insert(items)
+
+    if (insertError) throw insertError
   }
 }
 

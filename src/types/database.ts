@@ -99,6 +99,19 @@ export interface TipoAtencion {
   created_at: string
 }
 
+export interface ProfesionalDisponibilidad {
+  id: string
+  profesional_id: string
+  sucursal_id: string
+  dia_semana: number
+  hora_inicio: string
+  hora_fin: string
+  created_at: string
+  updated_at: string
+  
+  profesional?: Profesional
+}
+
 export interface CentroConfig {
   id: string
   nombre: string
