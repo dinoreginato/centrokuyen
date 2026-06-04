@@ -1,3 +1,11 @@
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 CREATE TABLE IF NOT EXISTS profesional_disponibilidad (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   profesional_id UUID NOT NULL REFERENCES profesionales(id) ON DELETE CASCADE,
@@ -20,4 +28,3 @@ CREATE TRIGGER update_profesional_disponibilidad_updated_at
   EXECUTE PROCEDURE update_updated_at_column();
 
 ALTER TABLE profesional_disponibilidad DISABLE ROW LEVEL SECURITY;
-

@@ -129,8 +129,13 @@ const Disponibilidad = () => {
         }
       }
       setSchedule(base)
-    } catch (e) {
-      toast.error('Error al cargar disponibilidad')
+    } catch (e: any) {
+      const msg = String(e?.message || '')
+      if (msg.toLowerCase().includes('profesional_disponibilidad') && msg.toLowerCase().includes('does not exist')) {
+        toast.error('Falta crear la tabla de disponibilidad en Supabase (SQL)')
+      } else {
+        toast.error('Error al cargar disponibilidad')
+      }
       console.error('Error loading disponibilidad:', e)
       setSchedule(createDefaultConfig())
     }
@@ -204,8 +209,18 @@ const Disponibilidad = () => {
       await profesionalDisponibilidadService.replaceSchedule(selectedProfesionalId, currentSucursal.id, items)
       toast.success('Disponibilidad guardada')
       await loadSchedule()
-    } catch (e) {
-      toast.error('Error al guardar disponibilidad')
+    } catch (e: any) {
+      const msg = String(e?.message || '')
+      const lower = msg.toLowerCase()
+      if (lower.includes('profesional_disponibilidad') && lower.includes('does not exist')) {
+        toast.error('Falta crear la tabla de disponibilidad en Supabase (SQL)')
+      } else if (lower.includes('row-level security') || lower.includes('permission denied')) {
+        toast.error('Permisos insuficientes en Supabase para guardar disponibilidad')
+      } else if (msg) {
+        toast.error(msg)
+      } else {
+        toast.error('Error al guardar disponibilidad')
+      }
       console.error('Error saving disponibilidad:', e)
     } finally {
       setSavingSchedule(false)
@@ -403,4 +418,3 @@ const Disponibilidad = () => {
 }
 
 export default Disponibilidad
-
