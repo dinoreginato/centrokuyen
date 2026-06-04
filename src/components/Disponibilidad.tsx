@@ -11,6 +11,7 @@ import { profesionalesService, profesionalDisponibilidadService, atencionesServi
 type DayConfig = { enabled: boolean; start: string; end: string }
 
 const SESSION_MINUTES = 60
+const SLOT_STEP_MINUTES = 15
 
 const DIAS = [
   { value: 1, label: 'Lunes' },
@@ -174,7 +175,7 @@ const Disponibilidad = () => {
     const ocupados = ocupadosByFecha[fecha] || []
 
     const slots: string[] = []
-    for (let m = startMin; m + SESSION_MINUTES <= endMin; m += SESSION_MINUTES) {
+    for (let m = startMin; m + SESSION_MINUTES <= endMin; m += SLOT_STEP_MINUTES) {
       const candidateStart = m
       const candidateEnd = m + SESSION_MINUTES
       const overlaps = ocupados.some(occStart => {

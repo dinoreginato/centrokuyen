@@ -151,6 +151,13 @@ export const pacientesService = {
       .eq('id', id)
     
     if (error) throw error;
+
+    const { error: atencionesError } = await supabase
+      .from('atenciones')
+      .update({ activo: false })
+      .eq('paciente_id', id)
+
+    if (atencionesError) throw atencionesError
     if (oldData) await auditService.logAction('pacientes', id, 'SOFT_DELETE', oldData);
   }
 }
