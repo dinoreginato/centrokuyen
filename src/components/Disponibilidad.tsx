@@ -10,6 +10,8 @@ import { profesionalesService, profesionalDisponibilidadService, atencionesServi
 
 type DayConfig = { enabled: boolean; start: string; end: string }
 
+const SESSION_MINUTES = 60
+
 const DIAS = [
   { value: 1, label: 'Lunes' },
   { value: 2, label: 'Martes' },
@@ -35,20 +37,11 @@ const toMinutes = (hhmm: string) => {
   return (h || 0) * 60 + (m || 0)
 }
 
-const generateTimeSlots = () => {
-  const slots: string[] = []
-  for (let i = 8; i <= 22; i++) {
-    for (let j = 0; j < 60; j += 15) {
-      if (i === 22 && j > 0) break
-      const hour = i.toString().padStart(2, '0')
-      const minute = j.toString().padStart(2, '0')
-      slots.push(`${hour}:${minute}`)
-    }
-  }
-  return slots
+const toHHMM = (minutes: number) => {
+  const h = Math.floor(minutes / 60).toString().padStart(2, '0')
+  const m = (minutes % 60).toString().padStart(2, '0')
+  return `${h}:${m}`
 }
-
-const ALL_SLOTS = generateTimeSlots()
 
 const Disponibilidad = () => {
   const navigate = useNavigate()
@@ -66,7 +59,7 @@ const Disponibilidad = () => {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [agendaView, setAgendaView] = useState<'day' | 'week'>('week')
   const [loadingSlots, setLoadingSlots] = useState(false)
-  const [ocupadosByFecha, setOcupadosByFecha] = useState<Record<string, Set<string>>>({})
+  const [ocupadosByFecha, setOcupadosByFecha] = useState<Record<string, number[]>>({})
   const [selectedSlot, setSelectedSlot] = useState<{ fecha: string; hora: string } | null>(null)
 
   const isAdmin = user?.rol === 'admin'
@@ -153,11 +146,11 @@ const Disponibilidad = () => {
       const endStr = format(end, 'yyyy-MM-dd')
 
       const atenciones = await atencionesService.getByProfesionalAndDateRange(selectedProfesionalId, startStr, endStr, currentSucursal.id)
-      const map: Record<string, Set<string>> = {}
+      const map: Record<string, number[]> = {}
       for (const a of atenciones) {
         const fecha = a.fecha
-        if (!map[fecha]) map[fecha] = new Set()
-        map[fecha].add(a.hora.substring(0, 5))
+        if (!map[fecha]) map[fecha] = []
+        map[fecha].push(toMinutes(a.hora.substring(0, 5)))
       }
       setOcupadosByFecha(map)
     } catch (e) {
@@ -176,16 +169,22 @@ const Disponibilidad = () => {
     if (!cfg?.enabled) return []
     const startMin = toMinutes(cfg.start)
     const endMin = toMinutes(cfg.end)
-    if (endMin <= startMin) return []
+    if (endMin - startMin < SESSION_MINUTES) return []
 
-    const ocupados = ocupadosByFecha[fecha] || new Set<string>()
+    const ocupados = ocupadosByFecha[fecha] || []
 
-    return ALL_SLOTS.filter(h => {
-      const m = toMinutes(h)
-      if (m < startMin) return false
-      if (m >= endMin) return false
-      return !ocupados.has(h)
-    })
+    const slots: string[] = []
+    for (let m = startMin; m + SESSION_MINUTES <= endMin; m += SESSION_MINUTES) {
+      const candidateStart = m
+      const candidateEnd = m + SESSION_MINUTES
+      const overlaps = ocupados.some(occStart => {
+        const occEnd = occStart + SESSION_MINUTES
+        return candidateStart < occEnd && occStart < candidateEnd
+      })
+      if (!overlaps) slots.push(toHHMM(m))
+    }
+
+    return slots
   }
 
   const weekDays = useMemo(() => {
