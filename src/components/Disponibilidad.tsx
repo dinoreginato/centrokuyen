@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Calendar, Clock, Save } from 'lucide-react'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
+import { eachDayOfInterval, endOfWeek, format, startOfWeek } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Profesional, ProfesionalDisponibilidad } from '@/types/database'
@@ -64,9 +64,10 @@ const Disponibilidad = () => {
   const [savingSchedule, setSavingSchedule] = useState(false)
 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [agendaView, setAgendaView] = useState<'day' | 'week'>('week')
   const [loadingSlots, setLoadingSlots] = useState(false)
-  const [ocupados, setOcupados] = useState<Set<string>>(new Set())
-  const [selectedHora, setSelectedHora] = useState<string | null>(null)
+  const [ocupadosByFecha, setOcupadosByFecha] = useState<Record<string, Set<string>>>({})
+  const [selectedSlot, setSelectedSlot] = useState<{ fecha: string; hora: string } | null>(null)
 
   const isAdmin = user?.rol === 'admin'
 
@@ -83,8 +84,8 @@ const Disponibilidad = () => {
   useEffect(() => {
     if (!selectedProfesionalId || !currentSucursal?.id) {
       setSchedule(createDefaultConfig())
-      setOcupados(new Set())
-      setSelectedHora(null)
+      setOcupadosByFecha({})
+      setSelectedSlot(null)
       return
     }
     loadSchedule()
@@ -92,12 +93,12 @@ const Disponibilidad = () => {
 
   useEffect(() => {
     if (!selectedProfesionalId || !currentSucursal?.id || !selectedDate) {
-      setOcupados(new Set())
-      setSelectedHora(null)
+      setOcupadosByFecha({})
+      setSelectedSlot(null)
       return
     }
     loadOcupados()
-  }, [selectedProfesionalId, selectedDate, currentSucursal?.id])
+  }, [selectedProfesionalId, selectedDate, currentSucursal?.id, agendaView])
 
   const loadProfesionales = async () => {
     if (!currentSucursal?.id) return
@@ -145,29 +146,39 @@ const Disponibilidad = () => {
     if (!currentSucursal?.id) return
     try {
       setLoadingSlots(true)
-      const atenciones = await atencionesService.getByProfesionalAndFecha(selectedProfesionalId, selectedDate, currentSucursal.id)
-      const set = new Set<string>(atenciones.map(a => a.hora.substring(0, 5)))
-      setOcupados(set)
+      const baseDate = new Date(`${selectedDate}T00:00:00`)
+      const start = startOfWeek(baseDate, { weekStartsOn: 1 })
+      const end = endOfWeek(baseDate, { weekStartsOn: 1 })
+      const startStr = format(start, 'yyyy-MM-dd')
+      const endStr = format(end, 'yyyy-MM-dd')
+
+      const atenciones = await atencionesService.getByProfesionalAndDateRange(selectedProfesionalId, startStr, endStr, currentSucursal.id)
+      const map: Record<string, Set<string>> = {}
+      for (const a of atenciones) {
+        const fecha = a.fecha
+        if (!map[fecha]) map[fecha] = new Set()
+        map[fecha].add(a.hora.substring(0, 5))
+      }
+      setOcupadosByFecha(map)
     } catch (e) {
       toast.error('Error al cargar agenda del día')
       console.error('Error loading ocupados:', e)
-      setOcupados(new Set())
+      setOcupadosByFecha({})
     } finally {
       setLoadingSlots(false)
     }
   }
 
-  const weekday = useMemo(() => {
-    if (!selectedDate) return 0
-    return new Date(`${selectedDate}T00:00:00`).getDay()
-  }, [selectedDate])
-
-  const slotsDisponibles = useMemo(() => {
+  const getSlotsDisponiblesForDate = (fecha: string) => {
+    const day = new Date(`${fecha}T00:00:00`)
+    const weekday = day.getDay()
     const cfg = schedule[weekday]
     if (!cfg?.enabled) return []
     const startMin = toMinutes(cfg.start)
     const endMin = toMinutes(cfg.end)
     if (endMin <= startMin) return []
+
+    const ocupados = ocupadosByFecha[fecha] || new Set<string>()
 
     return ALL_SLOTS.filter(h => {
       const m = toMinutes(h)
@@ -175,7 +186,14 @@ const Disponibilidad = () => {
       if (m >= endMin) return false
       return !ocupados.has(h)
     })
-  }, [schedule, weekday, ocupados])
+  }
+
+  const weekDays = useMemo(() => {
+    const baseDate = new Date(`${selectedDate}T00:00:00`)
+    const start = startOfWeek(baseDate, { weekStartsOn: 1 })
+    const end = endOfWeek(baseDate, { weekStartsOn: 1 })
+    return eachDayOfInterval({ start, end })
+  }, [selectedDate])
 
   const saveSchedule = async () => {
     if (!currentSucursal?.id) {
@@ -195,8 +213,7 @@ const Disponibilidad = () => {
         const startMin = toMinutes(cfg.start)
         const endMin = toMinutes(cfg.end)
         if (endMin <= startMin) {
-          toast.error(`Horario inválido en ${dia.label}`)
-          return
+          throw new Error(`Horario inválido en ${dia.label}`)
         }
         items.push({
           profesional_id: selectedProfesionalId,
@@ -228,8 +245,8 @@ const Disponibilidad = () => {
   }
 
   const goAgendar = () => {
-    if (!selectedProfesionalId || !selectedDate || !selectedHora) return
-    navigate(`/agenda/nueva?profesional_id=${encodeURIComponent(selectedProfesionalId)}&fecha=${encodeURIComponent(selectedDate)}&hora=${encodeURIComponent(selectedHora)}`)
+    if (!selectedProfesionalId || !selectedSlot) return
+    navigate(`/agenda/nueva?profesional_id=${encodeURIComponent(selectedProfesionalId)}&fecha=${encodeURIComponent(selectedSlot.fecha)}&hora=${encodeURIComponent(selectedSlot.hora)}`)
   }
 
   if (loading) {
@@ -254,7 +271,7 @@ const Disponibilidad = () => {
               value={selectedProfesionalId}
               onChange={(e) => {
                 setSelectedProfesionalId(e.target.value)
-                setSelectedHora(null)
+                setSelectedSlot(null)
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
               disabled={user?.rol === 'profesional'}
@@ -342,6 +359,10 @@ const Disponibilidad = () => {
             )
           })}
 
+          <div className="text-xs text-gray-500">
+            La disponibilidad se guarda por profesional y por sucursal (la sucursal actual es {currentSucursal?.nombre || ''}).
+          </div>
+
           <div className="pt-4 flex justify-end">
             <button
               onClick={saveSchedule}
@@ -365,7 +386,7 @@ const Disponibilidad = () => {
                   value={selectedDate}
                   onChange={(e) => {
                     setSelectedDate(e.target.value)
-                    setSelectedHora(null)
+                    setSelectedSlot(null)
                   }}
                   className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
                   disabled={!selectedProfesionalId}
@@ -375,7 +396,7 @@ const Disponibilidad = () => {
             <div className="flex items-end justify-end">
               <button
                 onClick={goAgendar}
-                disabled={!selectedProfesionalId || !selectedDate || !selectedHora}
+                disabled={!selectedProfesionalId || !selectedSlot}
                 className="bg-medical-green hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50"
               >
                 <Clock className="h-5 w-5" />
@@ -390,26 +411,101 @@ const Disponibilidad = () => {
             <div className="flex justify-center items-center h-32">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-medical-blue"></div>
             </div>
-          ) : slotsDisponibles.length === 0 ? (
-            <div className="text-center py-10 text-gray-600">
-              No hay horarios disponibles para esta fecha (según el horario configurado y las citas ya tomadas).
-            </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-              {slotsDisponibles.map(h => (
+            <>
+              <div className="flex items-center space-x-2 bg-gray-100 p-1 rounded-lg w-fit">
                 <button
-                  key={h}
-                  onClick={() => setSelectedHora(h)}
-                  className={`px-3 py-2 rounded-md border text-sm transition-colors ${
-                    selectedHora === h
-                      ? 'bg-medical-blue text-white border-medical-blue'
-                      : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50'
-                  }`}
+                  onClick={() => {
+                    setAgendaView('week')
+                    setSelectedSlot(null)
+                  }}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${agendaView === 'week' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                 >
-                  {h}
+                  Semana
                 </button>
-              ))}
-            </div>
+                <button
+                  onClick={() => {
+                    setAgendaView('day')
+                    setSelectedSlot(null)
+                  }}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${agendaView === 'day' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Día
+                </button>
+              </div>
+
+              {agendaView === 'day' ? (
+                (() => {
+                  const slots = getSlotsDisponiblesForDate(selectedDate)
+                  if (slots.length === 0) {
+                    return (
+                      <div className="text-center py-10 text-gray-600">
+                        No hay horarios disponibles para esta fecha (según el horario configurado y las citas ya tomadas).
+                      </div>
+                    )
+                  }
+                  return (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                      {slots.map(h => (
+                        <button
+                          key={h}
+                          onClick={() => setSelectedSlot({ fecha: selectedDate, hora: h })}
+                          className={`px-3 py-2 rounded-md border text-sm transition-colors ${
+                            selectedSlot?.fecha === selectedDate && selectedSlot?.hora === h
+                              ? 'bg-medical-blue text-white border-medical-blue'
+                              : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                          }`}
+                        >
+                          {h}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })()
+              ) : (
+                <div className="overflow-x-auto pb-2">
+                  <div className="grid gap-3 grid-cols-1 md:grid-cols-7 min-w-[1000px] md:min-w-0">
+                    {weekDays.map((day) => {
+                      const fecha = format(day, 'yyyy-MM-dd')
+                      const slots = getSlotsDisponiblesForDate(fecha)
+                      return (
+                        <div key={fecha} className="bg-white rounded-lg border border-gray-200 shadow-sm">
+                          <div className="p-3 text-center border-b border-gray-100 bg-gray-50">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-gray-600">
+                              {format(day, 'EEEE')}
+                            </div>
+                            <div className="text-sm font-bold text-gray-900">
+                              {format(day, 'dd/MM')}
+                            </div>
+                          </div>
+                          <div className="p-2 space-y-2">
+                            {slots.length === 0 ? (
+                              <div className="text-center py-6 text-xs text-gray-400 italic">Sin disponibilidad</div>
+                            ) : (
+                              <div className="flex flex-wrap gap-2">
+                                {slots.map(h => (
+                                  <button
+                                    key={`${fecha}-${h}`}
+                                    onClick={() => setSelectedSlot({ fecha, hora: h })}
+                                    className={`px-2 py-1 rounded-md border text-xs transition-colors ${
+                                      selectedSlot?.fecha === fecha && selectedSlot?.hora === h
+                                        ? 'bg-medical-blue text-white border-medical-blue'
+                                        : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                                    }`}
+                                  >
+                                    {h}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
