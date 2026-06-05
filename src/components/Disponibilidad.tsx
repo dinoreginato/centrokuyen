@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Calendar, Clock, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { eachDayOfInterval, endOfWeek, format, startOfWeek } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Profesional, ProfesionalDisponibilidad } from '@/types/database'
@@ -472,7 +473,7 @@ const Disponibilidad = () => {
                         <div key={fecha} className="bg-white rounded-lg border border-gray-200 shadow-sm">
                           <div className="p-3 text-center border-b border-gray-100 bg-gray-50">
                             <div className="text-xs font-semibold uppercase tracking-wider text-gray-600">
-                              {format(day, 'EEEE')}
+                              {format(day, 'EEEE', { locale: es })}
                             </div>
                             <div className="text-sm font-bold text-gray-900">
                               {format(day, 'dd/MM')}
