@@ -14,6 +14,7 @@ import Agenda from '@/components/Agenda'
 import AtencionForm from '@/components/AtencionForm'
 import AtencionesPorPaciente from '@/components/AtencionesPorPaciente'
 import Disponibilidad from '@/components/Disponibilidad'
+import CajaDiaria from '@/components/CajaDiaria'
 import TiposAtencionList from '@/components/TiposAtencionList'
 import TipoAtencionForm from '@/components/TipoAtencionForm'
 import Reportes from '@/components/Reportes'
@@ -113,6 +114,7 @@ const AppContent = () => {
             <Route path="/agenda/:id" element={<AtencionForm />} />
             <Route path="/atenciones-por-paciente" element={<StaffRoute><AtencionesPorPaciente /></StaffRoute>} />
             <Route path="/disponibilidad" element={<StaffRoute><Disponibilidad /></StaffRoute>} />
+            <Route path="/caja-diaria" element={<StaffRoute><CajaDiaria /></StaffRoute>} />
           </Routes>
         </main>
       </div>
