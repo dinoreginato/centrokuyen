@@ -249,15 +249,9 @@ const AtencionForm = () => {
 
   const generateTimeSlots = () => {
     const slots = []
-    for (let i = 8; i <= 22; i++) {
-      for (let j = 0; j < 60; j += 15) {
-        // Stop at 22:00
-        if (i === 22 && j > 0) break
-        
-        const hour = i.toString().padStart(2, '0')
-        const minute = j.toString().padStart(2, '0')
-        slots.push(`${hour}:${minute}`)
-      }
+    for (let i = 8; i <= 21; i++) {
+      const hour = i.toString().padStart(2, '0')
+      slots.push(`${hour}:00`)
     }
     return slots
   }
