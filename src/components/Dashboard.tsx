@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Users, UserPlus, Calendar, DollarSign, TrendingUp, Activity, BarChart3, Bell, Wallet, CreditCard, PiggyBank } from 'lucide-react'
+import { Users, UserPlus, Calendar, DollarSign, TrendingUp, Activity, BarChart3, Bell, Wallet, CreditCard, PiggyBank, LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
@@ -10,6 +10,55 @@ import { es } from 'date-fns/locale'
 import DashboardCharts from './DashboardCharts'
 import { autoNotificationService, notificationService } from '@/utils/notifications'
 import { formatCLP } from '@/utils/currency'
+
+interface DashboardStatCardProps {
+  title: string
+  value: string | number
+  icon: LucideIcon
+  iconClassName: string
+  valueClassName: string
+  subtitle?: string
+  to?: string
+}
+
+const DashboardStatCard = ({
+  title,
+  value,
+  icon: Icon,
+  iconClassName,
+  valueClassName,
+  subtitle,
+  to
+}: DashboardStatCardProps) => {
+  const cardContent = (
+    <div className="bg-white rounded-xl shadow-md border border-gray-100 p-5 min-h-[138px] h-full transition-all hover:shadow-lg">
+      <div className="flex items-start justify-between gap-4 h-full">
+        <div className="flex-1 min-w-0 pr-2">
+          <p className="text-sm font-medium text-gray-600 leading-5 min-h-[40px]">
+            {title}
+          </p>
+          <p className={`mt-3 text-3xl font-bold leading-none break-words ${valueClassName}`}>
+            {value}
+          </p>
+          {subtitle && (
+            <p className="mt-3 text-xs text-gray-500 leading-4">
+              {subtitle}
+            </p>
+          )}
+        </div>
+        <div className={`shrink-0 rounded-full p-3.5 ${iconClassName}`}>
+          <Icon className="h-6 w-6" />
+        </div>
+      </div>
+    </div>
+  )
+
+  if (to) {
+    return <Link to={to} className="block h-full">{cardContent}</Link>
+  }
+
+  return cardContent
+}
 
 const Dashboard = () => {
   const { user } = useAuth()
@@ -222,131 +271,86 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Link to={isProfesional ? "/agenda" : "/profesionales"} className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">
-                  {isProfesional ? 'Total Atenciones' : 'Total Profesionales'}
-              </p>
-              <p className="text-3xl font-bold text-medical-blue">{stats.totalProfesionales}</p>
-            </div>
-            <div className="bg-medical-blue text-white rounded-full p-3">
-              <Users className="h-6 w-6" />
-            </div>
-          </div>
-        </Link>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
+        <DashboardStatCard
+          to={isProfesional ? "/agenda" : "/profesionales"}
+          title={isProfesional ? 'Total Atenciones' : 'Total Profesionales'}
+          value={stats.totalProfesionales}
+          icon={Users}
+          iconClassName="bg-medical-blue text-white"
+          valueClassName="text-medical-blue"
+        />
 
-        <Link to={isProfesional ? "/agenda" : "/pacientes"} className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">
-                  {isProfesional ? 'Mis Pacientes' : 'Total Pacientes'}
-              </p>
-              <p className="text-3xl font-bold text-medical-green">{stats.totalPacientes}</p>
-            </div>
-            <div className="bg-medical-green text-white rounded-full p-3">
-              <UserPlus className="h-6 w-6" />
-            </div>
-          </div>
-        </Link>
+        <DashboardStatCard
+          to={isProfesional ? "/agenda" : "/pacientes"}
+          title={isProfesional ? 'Mis Pacientes' : 'Total Pacientes'}
+          value={stats.totalPacientes}
+          icon={UserPlus}
+          iconClassName="bg-medical-green text-white"
+          valueClassName="text-medical-green"
+        />
 
-        <Link to="/agenda" className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">
-                  {isProfesional ? 'Mis Atenciones (Mes)' : 'Atenciones Este Mes'}
-              </p>
-              <p className="text-3xl font-bold text-orange-600">{stats.totalAtencionesMes}</p>
-            </div>
-            <div className="bg-orange-600 text-white rounded-full p-3">
-              <Calendar className="h-6 w-6" />
-            </div>
-          </div>
-        </Link>
+        <DashboardStatCard
+          to="/agenda"
+          title={isProfesional ? 'Mis Atenciones (Mes)' : 'Atenciones Este Mes'}
+          value={stats.totalAtencionesMes}
+          icon={Calendar}
+          iconClassName="bg-orange-600 text-white"
+          valueClassName="text-orange-600"
+        />
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">
-                {isProfesional ? 'Mis Ganancias Cobradas' : 'Ingresos Cobrados'}
-              </p>
-              <p className="text-3xl font-bold text-purple-600">{formatCLP(stats.ingresosMes)}</p>
-            </div>
-            <div className="bg-purple-600 text-white rounded-full p-3">
-              <DollarSign className="h-6 w-6" />
-            </div>
-          </div>
-        </div>
+        <DashboardStatCard
+          title={isProfesional ? 'Mis Ganancias Cobradas' : 'Ingresos Cobrados'}
+          value={formatCLP(stats.ingresosMes)}
+          icon={DollarSign}
+          iconClassName="bg-purple-600 text-white"
+          valueClassName="text-purple-600 text-[2rem]"
+        />
       </div>
 
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-3' : 'xl:grid-cols-5'} gap-6`}>
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">{isProfesional ? 'Por Cobrar' : 'Pendiente por Cobrar'}</p>
-              <p className="text-2xl font-bold text-amber-600">{formatCLP(stats.ingresosPendientesMes)}</p>
-            </div>
-            <div className="bg-amber-100 text-amber-700 rounded-full p-3">
-              <CreditCard className="h-6 w-6" />
-            </div>
-          </div>
-        </div>
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-3' : 'xl:grid-cols-3 2xl:grid-cols-5'} gap-6 items-stretch`}>
+        <DashboardStatCard
+          title={isProfesional ? 'Por Cobrar' : 'Pendiente por Cobrar'}
+          value={formatCLP(stats.ingresosPendientesMes)}
+          icon={CreditCard}
+          iconClassName="bg-amber-100 text-amber-700"
+          valueClassName="text-amber-600 text-[2rem]"
+        />
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">{isProfesional ? 'Proyección del Mes' : 'Ingreso Proyectado'}</p>
-              <p className="text-2xl font-bold text-blue-600">{formatCLP(stats.ingresosProyectadosMes)}</p>
-            </div>
-            <div className="bg-blue-100 text-blue-700 rounded-full p-3">
-              <Wallet className="h-6 w-6" />
-            </div>
-          </div>
-        </div>
+        <DashboardStatCard
+          title={isProfesional ? 'Proyección del Mes' : 'Ingreso Proyectado'}
+          value={formatCLP(stats.ingresosProyectadosMes)}
+          icon={Wallet}
+          iconClassName="bg-blue-100 text-blue-700"
+          valueClassName="text-blue-600 text-[2rem]"
+        />
 
         {!isProfesional && (
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Costos del Mes</p>
-                <p className="text-2xl font-bold text-rose-600">{formatCLP(stats.costosMes)}</p>
-              </div>
-              <div className="bg-rose-100 text-rose-700 rounded-full p-3">
-                <PiggyBank className="h-6 w-6" />
-              </div>
-            </div>
-          </div>
+          <DashboardStatCard
+            title="Costos del Mes"
+            value={formatCLP(stats.costosMes)}
+            icon={PiggyBank}
+            iconClassName="bg-rose-100 text-rose-700"
+            valueClassName="text-rose-600 text-[2rem]"
+          />
         )}
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">{isProfesional ? 'Rendimiento Cobrado' : 'Utilidad Neta'}</p>
-              <p className={`text-2xl font-bold ${stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatCLP(stats.utilidadMes)}
-              </p>
-            </div>
-            <div className={`${stats.utilidadMes >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} rounded-full p-3`}>
-              <TrendingUp className="h-6 w-6" />
-            </div>
-          </div>
-        </div>
+        <DashboardStatCard
+          title={isProfesional ? 'Rendimiento Cobrado' : 'Utilidad Neta'}
+          value={formatCLP(stats.utilidadMes)}
+          icon={TrendingUp}
+          iconClassName={stats.utilidadMes >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}
+          valueClassName={`${stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'} text-[2rem]`}
+        />
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">{isProfesional ? 'Cobrado / Proyectado' : 'Margen del Mes'}</p>
-              <p className="text-2xl font-bold text-slate-700">{stats.margenMes.toFixed(1)}%</p>
-              {!isProfesional && (
-                <p className="text-xs text-gray-500 mt-1">Canceladas: {stats.citasCanceladasMes}</p>
-              )}
-            </div>
-            <div className="bg-slate-100 text-slate-700 rounded-full p-3">
-              <BarChart3 className="h-6 w-6" />
-            </div>
-          </div>
-        </div>
+        <DashboardStatCard
+          title={isProfesional ? 'Cobrado / Proyectado' : 'Margen del Mes'}
+          value={`${stats.margenMes.toFixed(1)}%`}
+          icon={BarChart3}
+          iconClassName="bg-slate-100 text-slate-700"
+          valueClassName="text-slate-700"
+          subtitle={!isProfesional ? `Canceladas: ${stats.citasCanceladasMes}` : undefined}
+        />
       </div>
       
       <div className="bg-white rounded-lg shadow-md p-6">
