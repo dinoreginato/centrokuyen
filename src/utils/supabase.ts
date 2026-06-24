@@ -564,6 +564,9 @@ export const reportesService = {
     // Obtener atenciones del mes
     const atenciones = await atencionesService.getByDateRange(startDate, endDate, sucursalId)
     
+    const atencionesClinicas = atenciones.filter(a => !a.es_bloqueo)
+    const atencionesActivas = atencionesClinicas.filter(a => a.estado_cita !== 'cancelada')
+
     // Obtener costos del mes
     const costos = await costosService.getByDateRange(startDate, endDate, sucursalId)
 
@@ -579,13 +582,13 @@ export const reportesService = {
       .filter(c => c.tipo === 'variable')
       .reduce((sum, c) => sum + c.monto, 0)
 
-    const ingresosTotales = atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0)
-    const ingresosCobrados = atenciones
+    const ingresosTotales = atencionesActivas.reduce((sum, a) => sum + a.valor_cobrado, 0)
+    const ingresosCobrados = atencionesActivas
       .filter(a => a.pagado)
       .reduce((sum, a) => sum + a.valor_cobrado, 0)
 
     // Calcular pagos a profesionales considerando excepciones
-    const totalPagadoProfesionales = atenciones.reduce((sum, a) => {
+    const totalPagadoProfesionales = atencionesActivas.reduce((sum, a) => {
       if (a.profesional) {
         // Buscar regla específica para este profesional y tipo de atención
         const comisionEspecifica = comisiones.find(c => 
@@ -610,7 +613,7 @@ export const reportesService = {
 
     return {
       mes: startDate,
-      total_atenciones: atenciones.length,
+      total_atenciones: atencionesActivas.length,
       ingresos_totales: ingresosTotales,
       ingresos_cobrados: ingresosCobrados,
       total_pagado_profesionales: totalPagadoProfesionales,
