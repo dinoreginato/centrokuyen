@@ -7,6 +7,7 @@ import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion, EstadoCita } from '@/types/database'
 import { atencionesService } from '@/utils/supabase'
 import { ESTADO_CITA_OPTIONS, getEstadoCitaBadgeClass, getEstadoCitaCardClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
+import { getBloqueoBadgeClass, getBloqueoLabel } from '@/utils/bloqueos'
 import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfMonth, endOfMonth, isSameMonth, differenceInYears } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -220,6 +221,13 @@ Gracias 🙌🏻`
             <Plus className="h-5 w-5" />
             <span>Nueva Atención</span>
           </Link>
+          <Link
+            to="/agenda/nueva?es_bloqueo=true"
+            className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+          >
+            <Plus className="h-5 w-5" />
+            <span>Nuevo Bloque</span>
+          </Link>
         </div>
       </div>
 
@@ -322,7 +330,9 @@ Gracias 🙌🏻`
                         <div
                           key={atencion.id}
                           className={`relative p-2 rounded-md border text-xs shadow-sm transition-all hover:shadow-md group ${
-                            getEstadoCitaCardClass(atencion.estado_cita, atencion.pagado, atencion.estado_asistencia)
+                            atencion.es_bloqueo
+                              ? `${getBloqueoBadgeClass(atencion.tipo_bloqueo)} bg-opacity-20`
+                              : getEstadoCitaCardClass(atencion.estado_cita, atencion.pagado, atencion.estado_asistencia)
                           }`}
                         >
                           <div className="flex justify-between items-start mb-1.5">
@@ -342,16 +352,22 @@ Gracias 🙌🏻`
                             </div>
                           </div>
 
-                          <div className={`inline-flex px-1.5 py-0.5 rounded border text-[10px] font-medium mb-1.5 ${getEstadoCitaBadgeClass(atencion.estado_cita)}`}>
-                            {getEstadoCitaLabel(atencion.estado_cita)}
-                          </div>
+                          {atencion.es_bloqueo ? (
+                            <div className={`inline-flex px-1.5 py-0.5 rounded border text-[10px] font-medium mb-1.5 ${getBloqueoBadgeClass(atencion.tipo_bloqueo)}`}>
+                              {getBloqueoLabel(atencion.tipo_bloqueo)}
+                            </div>
+                          ) : (
+                            <div className={`inline-flex px-1.5 py-0.5 rounded border text-[10px] font-medium mb-1.5 ${getEstadoCitaBadgeClass(atencion.estado_cita)}`}>
+                              {getEstadoCitaLabel(atencion.estado_cita)}
+                            </div>
+                          )}
 
                           <div className="mb-2">
-                            <div className="font-semibold text-gray-900 truncate" title={atencion.paciente?.nombre}>
-                              {atencion.paciente?.nombre}
+                            <div className="font-semibold text-gray-900 truncate" title={atencion.es_bloqueo ? getBloqueoLabel(atencion.tipo_bloqueo) : atencion.paciente?.nombre}>
+                              {atencion.es_bloqueo ? getBloqueoLabel(atencion.tipo_bloqueo) : atencion.paciente?.nombre}
                             </div>
 
-                            {(() => {
+                            {!atencion.es_bloqueo && (() => {
                               const edad = getEdadPaciente(atencion)
                               return edad === null ? null : (
                                 <div className="text-gray-500 truncate text-[10px] mt-0.5">
@@ -367,8 +383,14 @@ Gracias 🙌🏻`
                             )}
                             
                             <div className="text-gray-500 truncate text-[10px] mt-0.5">
-                              {atencion.tipos_atencion?.nombre}
+                              {atencion.es_bloqueo ? 'Bloque no clínico' : atencion.tipos_atencion?.nombre}
                             </div>
+
+                            {atencion.es_bloqueo && atencion.observaciones && (
+                              <div className="text-gray-600 text-[10px] mt-0.5 line-clamp-2">
+                                {atencion.observaciones}
+                              </div>
+                            )}
 
                             {atencion.numero_boleta && (
                               <div className="text-gray-600 truncate text-[10px] mt-0.5 font-medium bg-gray-50 px-1 rounded inline-block">
@@ -378,7 +400,7 @@ Gracias 🙌🏻`
                           </div>
 
                           <div className="space-y-1.5 pt-1.5 border-t border-gray-100 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                            {(user?.rol === 'admin' || (user?.rol === 'profesional' && user.profesional_id === atencion.profesional_id)) && (
+                            {!atencion.es_bloqueo && (user?.rol === 'admin' || (user?.rol === 'profesional' && user.profesional_id === atencion.profesional_id)) && (
                               <div className="flex flex-wrap gap-1">
                                 <button
                                   onClick={() => updateEstadoCita(atencion, 'confirmada')}
@@ -405,44 +427,48 @@ Gracias 🙌🏻`
                             )}
 
                             <div className="flex justify-end items-center space-x-1">
-                            <button
-                              onClick={() => toggleAsistencia(atencion, 'asistio')}
-                              disabled={atencion.estado_cita === 'cancelada'}
-                              className={`p-1 rounded hover:bg-green-50 ${atencion.estado_asistencia === 'asistio' ? 'text-green-600' : 'text-gray-400 hover:text-green-600'}`}
-                              title="Asistió"
-                            >
-                              <CheckCircle className="h-3 w-3" />
-                            </button>
-                            
-                            <button
-                              onClick={() => toggleAsistencia(atencion, 'no_asistio')}
-                              disabled={atencion.estado_cita === 'cancelada'}
-                              className={`p-1 rounded hover:bg-red-50 ${atencion.estado_asistencia === 'no_asistio' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
-                              title="No Asistió"
-                            >
-                              <XCircle className="h-3 w-3" />
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                const link = getWhatsAppLink(atencion)
-                                if (link) window.open(link, '_blank')
-                                else toast.error('Sin teléfono')
-                              }}
-                              className="p-1 rounded hover:bg-green-50 text-gray-400 hover:text-green-600"
-                              title="WhatsApp"
-                            >
-                              <MessageCircle className="h-3 w-3" />
-                            </button>
-
-                            {user?.rol === 'admin' && (
+                            {!atencion.es_bloqueo && (
+                              <>
                                 <button
-                                  onClick={() => togglePago(atencion)}
-                                  className={`p-1 rounded hover:bg-yellow-50 ${atencion.pagado ? 'text-green-600' : 'text-gray-400 hover:text-yellow-600'}`}
-                                  title="Pago"
+                                  onClick={() => toggleAsistencia(atencion, 'asistio')}
+                                  disabled={atencion.estado_cita === 'cancelada'}
+                                  className={`p-1 rounded hover:bg-green-50 ${atencion.estado_asistencia === 'asistio' ? 'text-green-600' : 'text-gray-400 hover:text-green-600'}`}
+                                  title="Asistió"
                                 >
-                                  <DollarSign className="h-3 w-3" />
+                                  <CheckCircle className="h-3 w-3" />
                                 </button>
+                                
+                                <button
+                                  onClick={() => toggleAsistencia(atencion, 'no_asistio')}
+                                  disabled={atencion.estado_cita === 'cancelada'}
+                                  className={`p-1 rounded hover:bg-red-50 ${atencion.estado_asistencia === 'no_asistio' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
+                                  title="No Asistió"
+                                >
+                                  <XCircle className="h-3 w-3" />
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    const link = getWhatsAppLink(atencion)
+                                    if (link) window.open(link, '_blank')
+                                    else toast.error('Sin teléfono')
+                                  }}
+                                  className="p-1 rounded hover:bg-green-50 text-gray-400 hover:text-green-600"
+                                  title="WhatsApp"
+                                >
+                                  <MessageCircle className="h-3 w-3" />
+                                </button>
+
+                                {user?.rol === 'admin' && (
+                                    <button
+                                      onClick={() => togglePago(atencion)}
+                                      className={`p-1 rounded hover:bg-yellow-50 ${atencion.pagado ? 'text-green-600' : 'text-gray-400 hover:text-yellow-600'}`}
+                                      title="Pago"
+                                    >
+                                      <DollarSign className="h-3 w-3" />
+                                    </button>
+                                )}
+                              </>
                             )}
 
                             {(user?.rol === 'admin' || (user?.rol === 'profesional' && user.profesional_id === atencion.profesional_id)) && (

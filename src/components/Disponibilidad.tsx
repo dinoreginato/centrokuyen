@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion, Profesional, ProfesionalDisponibilidad } from '@/types/database'
 import { profesionalesService, profesionalDisponibilidadService, atencionesService } from '@/utils/supabase'
+import { getBloqueoBadgeClass, getBloqueoLabel } from '@/utils/bloqueos'
 
 type DayConfig = { enabled: boolean; start: string; end: string }
 type SlotRow = { hora: string; atencion: Atencion | null }
@@ -277,6 +278,13 @@ const Disponibilidad = () => {
     )
   }
 
+  const goBloqueo = () => {
+    if (!selectedProfesionalId || !selectedSlot) return
+    navigate(
+      `/agenda/nueva?profesional_id=${encodeURIComponent(selectedProfesionalId)}&fecha=${encodeURIComponent(selectedSlot.fecha)}&hora=${encodeURIComponent(selectedSlot.hora)}&es_bloqueo=true`
+    )
+  }
+
   const renderSlotRow = (fecha: string, row: SlotRow, compact = false) => {
     const isSelected = selectedSlot?.fecha === fecha && selectedSlot?.hora === row.hora
 
@@ -284,14 +292,21 @@ const Disponibilidad = () => {
       return (
         <div
           key={`${fecha}-${row.hora}`}
-          className={`rounded-md border border-red-200 bg-red-50 ${compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'}`}
+          className={`rounded-md border ${row.atencion.es_bloqueo ? getBloqueoBadgeClass(row.atencion.tipo_bloqueo) : 'border-red-200 bg-red-50'} ${compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'}`}
         >
-          <div className="font-medium text-red-700">{row.atencion.hora.substring(0, 5)}</div>
-          <div className="mt-1 flex items-start gap-1 text-red-900">
-            <User className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <div className="font-medium">{row.atencion.hora.substring(0, 5)}</div>
+          <div className="mt-1 flex items-start gap-1">
+            {!row.atencion.es_bloqueo && <User className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
             <div>
-              <div className="font-medium">{row.atencion.paciente?.nombre || 'Paciente agendado'}</div>
-              <div className="text-red-700">{row.atencion.tipos_atencion?.nombre || 'Atención'}</div>
+              <div className="font-medium">
+                {row.atencion.es_bloqueo ? getBloqueoLabel(row.atencion.tipo_bloqueo) : row.atencion.paciente?.nombre || 'Paciente agendado'}
+              </div>
+              <div>
+                {row.atencion.es_bloqueo ? 'Bloque no clínico' : row.atencion.tipos_atencion?.nombre || 'Atención'}
+              </div>
+              {row.atencion.es_bloqueo && row.atencion.observaciones && (
+                <div className="text-[10px] mt-1">{row.atencion.observaciones}</div>
+              )}
             </div>
           </div>
         </div>
@@ -459,14 +474,24 @@ const Disponibilidad = () => {
               </div>
             </div>
             <div className="flex items-end justify-end">
-              <button
-                onClick={goAgendar}
-                disabled={!selectedProfesionalId || !selectedSlot}
-                className="bg-medical-green hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50"
-              >
-                <Clock className="h-5 w-5" />
-                <span>Agendar</span>
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={goBloqueo}
+                  disabled={!selectedProfesionalId || !selectedSlot}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50"
+                >
+                  <Clock className="h-5 w-5" />
+                  <span>Bloquear</span>
+                </button>
+                <button
+                  onClick={goAgendar}
+                  disabled={!selectedProfesionalId || !selectedSlot}
+                  className="bg-medical-green hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50"
+                >
+                  <Clock className="h-5 w-5" />
+                  <span>Agendar</span>
+                </button>
+              </div>
             </div>
           </div>
 

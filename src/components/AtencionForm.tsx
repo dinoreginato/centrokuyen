@@ -4,9 +4,10 @@ import { Save, X, User, Stethoscope, DollarSign, Clock, Calendar, FileText, Repe
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { EstadoCita, Profesional, Paciente, TipoAtencion } from '@/types/database'
+import { EstadoCita, Profesional, Paciente, TipoAtencion, TipoBloqueo } from '@/types/database'
 import { atencionesService, profesionalesService, pacientesService, tiposAtencionService } from '@/utils/supabase'
 import { ESTADO_CITA_OPTIONS } from '@/utils/atencionEstado'
+import { BLOQUEO_OPTIONS, getBloqueoLabel } from '@/utils/bloqueos'
 import { addWeeks, format, parseISO } from 'date-fns'
 
 type AtencionFormData = {
@@ -18,6 +19,8 @@ type AtencionFormData = {
   valor_cobrado: number
   pagado: boolean
   estado_cita: EstadoCita
+  es_bloqueo: boolean
+  tipo_bloqueo: TipoBloqueo
   numero_boleta: string
   observaciones: string
   recurrencia: number
@@ -49,6 +52,8 @@ const AtencionForm = () => {
     valor_cobrado: 0,
     pagado: false,
     estado_cita: 'por_confirmar',
+    es_bloqueo: false,
+    tipo_bloqueo: 'almuerzo',
     numero_boleta: '',
     observaciones: '',
     recurrencia: 1 // 1 = Solo esta sesión, 4 = Plan Mensual (4 sesiones), etc.
@@ -69,11 +74,13 @@ const AtencionForm = () => {
     const fechaParam = params.get('fecha')
     const horaParam = params.get('hora')
     const pacienteIdParam = params.get('paciente_id')
+    const esBloqueoParam = params.get('es_bloqueo')
     setFormData(prev => {
       const next = { ...prev }
       if (fechaParam && !next.fecha) next.fecha = fechaParam
       if (horaParam && !next.hora) next.hora = horaParam
       if (pacienteIdParam && !next.paciente_id) next.paciente_id = pacienteIdParam
+      if (esBloqueoParam === 'true') next.es_bloqueo = true
       if (profesionalIdParam && !next.profesional_id && user?.rol !== 'profesional') next.profesional_id = profesionalIdParam
       return next
     })
@@ -130,13 +137,15 @@ const AtencionForm = () => {
       if (atencion) {
         setFormData({
           profesional_id: atencion.profesional_id,
-          paciente_id: atencion.paciente_id,
+          paciente_id: atencion.paciente_id || '',
           fecha: atencion.fecha,
           hora: atencion.hora.substring(0, 5),
           tipo_atencion: atencion.tipo_atencion,
           valor_cobrado: atencion.valor_cobrado,
           pagado: atencion.pagado,
           estado_cita: atencion.estado_cita || 'por_confirmar',
+          es_bloqueo: !!atencion.es_bloqueo,
+          tipo_bloqueo: atencion.tipo_bloqueo || 'almuerzo',
           numero_boleta: atencion.numero_boleta || '',
           observaciones: atencion.observaciones,
           recurrencia: 1
@@ -156,7 +165,7 @@ const AtencionForm = () => {
       return
     }
 
-    if (!formData.paciente_id) {
+    if (!formData.es_bloqueo && !formData.paciente_id) {
       toast.error('Debe seleccionar un paciente')
       return
     }
@@ -171,12 +180,12 @@ const AtencionForm = () => {
       return
     }
 
-    if (!formData.tipo_atencion) {
+    if (!formData.es_bloqueo && !formData.tipo_atencion) {
       toast.error('Debe seleccionar un tipo de atención')
       return
     }
 
-    if (formData.valor_cobrado <= 0) {
+    if (!formData.es_bloqueo && formData.valor_cobrado <= 0) {
       toast.error('El valor cobrado debe ser mayor a 0')
       return
     }
@@ -188,9 +197,21 @@ const AtencionForm = () => {
 
     try {
       setSaving(true)
+
+      const normalizedData = formData.es_bloqueo
+        ? {
+            ...formData,
+            paciente_id: null,
+            tipo_atencion: getBloqueoLabel(formData.tipo_bloqueo),
+            valor_cobrado: 0,
+            pagado: true,
+            estado_cita: 'confirmada' as EstadoCita,
+            numero_boleta: ''
+          }
+        : formData
       
       const dataToSave = {
-        ...formData,
+        ...normalizedData,
         sucursal_id: currentSucursal.id
       }
 
@@ -292,6 +313,65 @@ const AtencionForm = () => {
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de registro</label>
+            <select
+              name="es_bloqueo"
+              value={formData.es_bloqueo ? 'true' : 'false'}
+              onChange={(e) => {
+                const isBlock = e.target.value === 'true'
+                setFormData(prev => ({
+                  ...prev,
+                  es_bloqueo: isBlock,
+                  paciente_id: isBlock ? '' : prev.paciente_id,
+                  tipo_atencion: isBlock ? getBloqueoLabel(prev.tipo_bloqueo) : '',
+                  valor_cobrado: isBlock ? 0 : prev.valor_cobrado,
+                  pagado: isBlock ? true : false,
+                  estado_cita: isBlock ? 'confirmada' : 'por_confirmar',
+                  numero_boleta: isBlock ? '' : prev.numero_boleta
+                }))
+                if (isBlock) {
+                  setPacienteSearch('')
+                  setShowPacienteOptions(false)
+                }
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+            >
+              <option value="false">Atención clínica</option>
+              <option value="true">Bloque no clínico</option>
+            </select>
+          </div>
+
+          {formData.es_bloqueo && (
+            <div>
+              <label htmlFor="tipo_bloqueo" className="block text-sm font-medium text-gray-700 mb-2">
+                Tipo de bloqueo
+              </label>
+              <select
+                id="tipo_bloqueo"
+                name="tipo_bloqueo"
+                value={formData.tipo_bloqueo}
+                onChange={(e) => {
+                  const tipo = e.target.value as TipoBloqueo
+                  setFormData(prev => ({
+                    ...prev,
+                    tipo_bloqueo: tipo,
+                    tipo_atencion: getBloqueoLabel(tipo)
+                  }))
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+              >
+                {BLOQUEO_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
             <label htmlFor="profesional_id" className="block text-sm font-medium text-gray-700 mb-2">
               Profesional *
             </label>
@@ -316,59 +396,65 @@ const AtencionForm = () => {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="paciente_id" className="block text-sm font-medium text-gray-700 mb-2">
-              Paciente *
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                value={pacienteSearch}
-                onChange={(e) => {
-                  setPacienteSearch(e.target.value)
-                  setShowPacienteOptions(true)
-                  if (e.target.value === '') {
-                     setFormData(prev => ({ ...prev, paciente_id: '' }))
-                  }
-                }}
-                onFocus={() => setShowPacienteOptions(true)}
-                onBlur={() => setTimeout(() => setShowPacienteOptions(false), 200)}
-                placeholder="Buscar por nombre o RUT..."
-                className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-                autoComplete="off"
-              />
-              
-              {showPacienteOptions && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                  {pacientes.filter(p => 
-                    p.nombre.toLowerCase().includes(pacienteSearch.toLowerCase()) || 
-                    p.rut.toLowerCase().includes(pacienteSearch.toLowerCase())
-                  ).length > 0 ? (
-                    pacientes.filter(p => 
+          {!formData.es_bloqueo ? (
+            <div>
+              <label htmlFor="paciente_id" className="block text-sm font-medium text-gray-700 mb-2">
+                Paciente *
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={pacienteSearch}
+                  onChange={(e) => {
+                    setPacienteSearch(e.target.value)
+                    setShowPacienteOptions(true)
+                    if (e.target.value === '') {
+                       setFormData(prev => ({ ...prev, paciente_id: '' }))
+                    }
+                  }}
+                  onFocus={() => setShowPacienteOptions(true)}
+                  onBlur={() => setTimeout(() => setShowPacienteOptions(false), 200)}
+                  placeholder="Buscar por nombre o RUT..."
+                  className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+                  autoComplete="off"
+                />
+                
+                {showPacienteOptions && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                    {pacientes.filter(p => 
                       p.nombre.toLowerCase().includes(pacienteSearch.toLowerCase()) || 
                       p.rut.toLowerCase().includes(pacienteSearch.toLowerCase())
-                    ).map(paciente => (
-                      <div
-                        key={paciente.id}
-                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                        onClick={() => {
-                          setFormData(prev => ({ ...prev, paciente_id: paciente.id }))
-                          setPacienteSearch(paciente.nombre)
-                          setShowPacienteOptions(false)
-                        }}
-                      >
-                        <div className="font-medium">{paciente.nombre}</div>
-                        <div className="text-gray-500 text-xs">RUT: {paciente.rut}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-4 py-2 text-gray-500 text-sm">No se encontraron pacientes</div>
-                  )}
-                </div>
-              )}
+                    ).length > 0 ? (
+                      pacientes.filter(p => 
+                        p.nombre.toLowerCase().includes(pacienteSearch.toLowerCase()) || 
+                        p.rut.toLowerCase().includes(pacienteSearch.toLowerCase())
+                      ).map(paciente => (
+                        <div
+                          key={paciente.id}
+                          className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, paciente_id: paciente.id }))
+                            setPacienteSearch(paciente.nombre)
+                            setShowPacienteOptions(false)
+                          }}
+                        >
+                          <div className="font-medium">{paciente.nombre}</div>
+                          <div className="text-gray-500 text-xs">RUT: {paciente.rut}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-gray-500 text-sm">No se encontraron pacientes</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="md:col-span-1 bg-orange-50 border border-orange-200 rounded-md p-4 text-sm text-orange-900">
+              Este registro bloqueará el horario sin asociarlo a un paciente.
+            </div>
+          )}
 
           <div>
             <label htmlFor="fecha" className="block text-sm font-medium text-gray-700 mb-2">
@@ -415,28 +501,39 @@ const AtencionForm = () => {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="tipo_atencion" className="block text-sm font-medium text-gray-700 mb-2">
-              Tipo de Atención *
-            </label>
-            <select
-              id="tipo_atencion"
-              name="tipo_atencion"
-              value={formData.tipo_atencion}
-              onChange={(e) => handleTipoAtencionChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-              required
-            >
-              <option value="">Seleccione un tipo</option>
-              {tiposAtencion.map(tipo => (
-                <option key={tipo.id} value={tipo.id}>
-                  {tipo.nombre} {esProfesionalEnRengo ? '' : `- $${tipo.valor_base}`}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!formData.es_bloqueo ? (
+            <div>
+              <label htmlFor="tipo_atencion" className="block text-sm font-medium text-gray-700 mb-2">
+                Tipo de Atención *
+              </label>
+              <select
+                id="tipo_atencion"
+                name="tipo_atencion"
+                value={formData.tipo_atencion}
+                onChange={(e) => handleTipoAtencionChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+                required
+              >
+                <option value="">Seleccione un tipo</option>
+                {tiposAtencion.map(tipo => (
+                  <option key={tipo.id} value={tipo.id}>
+                    {tipo.nombre} {esProfesionalEnRengo ? '' : `- $${tipo.valor_base}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Etiqueta del bloqueo
+              </label>
+              <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700">
+                {getBloqueoLabel(formData.tipo_bloqueo)}
+              </div>
+            </div>
+          )}
 
-          {!esProfesionalEnRengo && (
+          {!esProfesionalEnRengo && !formData.es_bloqueo && (
             <div>
               <label htmlFor="valor_cobrado" className="block text-sm font-medium text-gray-700 mb-2">
                 Valor Cobrado *
@@ -458,29 +555,40 @@ const AtencionForm = () => {
             </div>
           )}
 
-          <div>
-            <label htmlFor="estado_cita" className="block text-sm font-medium text-gray-700 mb-2">
-              Estado de la Cita
-            </label>
-            <select
-              id="estado_cita"
-              name="estado_cita"
-              value={formData.estado_cita}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-            >
-              {ESTADO_CITA_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!formData.es_bloqueo ? (
+            <div>
+              <label htmlFor="estado_cita" className="block text-sm font-medium text-gray-700 mb-2">
+                Estado de la Cita
+              </label>
+              <select
+                id="estado_cita"
+                name="estado_cita"
+                value={formData.estado_cita}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+              >
+                {ESTADO_CITA_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Estado del bloqueo
+              </label>
+              <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700">
+                Confirmado
+              </div>
+            </div>
+          )}
         </div>
 
-        <div>
+          <div>
           <label htmlFor="observaciones" className="block text-sm font-medium text-gray-700 mb-2">
-            Observaciones
+            {formData.es_bloqueo ? 'Detalle del bloqueo' : 'Observaciones'}
           </label>
           <textarea
             id="observaciones"
@@ -489,10 +597,11 @@ const AtencionForm = () => {
             value={formData.observaciones}
             onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-            placeholder="Notas sobre la atención..."
+            placeholder={formData.es_bloqueo ? 'Ej: reunión de equipo, licencia médica, almuerzo...' : 'Notas sobre la atención...'}
           />
         </div>
 
+        {!formData.es_bloqueo && (
         <div>
           <label htmlFor="numero_boleta" className="block text-sm font-medium text-gray-700 mb-2">
             Número de Boleta (Opcional)
@@ -510,8 +619,9 @@ const AtencionForm = () => {
             />
           </div>
         </div>
+        )}
 
-        {!esProfesionalEnRengo && (
+        {!esProfesionalEnRengo && !formData.es_bloqueo && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex flex-col justify-center">
               <div className="flex items-center">

@@ -32,17 +32,20 @@ export interface Paciente {
 }
 
 export type EstadoCita = 'por_confirmar' | 'confirmada' | 'cancelada' | 'reagendada'
+export type TipoBloqueo = 'almuerzo' | 'reunion' | 'vacaciones' | 'licencia' | 'capacitacion' | 'otro'
 
 export interface Atencion {
   id: string
   profesional_id: string
-  paciente_id: string
+  paciente_id?: string | null
   fecha: string
   hora: string
   tipo_atencion: string
   valor_cobrado: number
   pagado: boolean
   estado_cita?: EstadoCita
+  es_bloqueo?: boolean
+  tipo_bloqueo?: TipoBloqueo | null
   estado_asistencia?: 'pendiente' | 'asistio' | 'no_asistio' // Nuevo campo
   numero_boleta?: string // Nuevo campo para número de boleta
   observaciones: string
