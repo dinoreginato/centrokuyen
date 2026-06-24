@@ -68,8 +68,11 @@ const Dashboard = () => {
     totalPacientes: 0,
     totalAtencionesMes: 0,
     ingresosMes: 0,
+    ingresosCobradosMes: 0,
     ingresosPendientesMes: 0,
     ingresosProyectadosMes: 0,
+    pagosProfesionalesMes: 0,
+    costosOperativosMes: 0,
     costosMes: 0,
     utilidadMes: 0,
     margenMes: 0,
@@ -164,8 +167,11 @@ const Dashboard = () => {
 
       // 4. Ingresos Este Mes / Mis Ganancias (SOLO PAGADAS)
       let ingresosMes = 0
+      let ingresosCobradosMes = 0
       let ingresosPendientesMes = 0
       let ingresosProyectadosMes = 0
+      let pagosProfesionalesMes = 0
+      let costosOperativosMes = 0
       let costosMes = 0
       let utilidadMes = 0
       let margenMes = 0
@@ -176,6 +182,7 @@ const Dashboard = () => {
 
       ingresosPendientesMes = atencionesPendientesMesList.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
       ingresosProyectadosMes = atencionesMesActivas.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
+      ingresosCobradosMes = atencionesPagadasMes.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
 
       if (isProfesional && user?.profesional_id) {
         const pid = user.profesional_id
@@ -194,12 +201,17 @@ const Dashboard = () => {
         utilidadMes = ingresosMes
         margenMes = ingresosProyectadosMes > 0 ? (ingresosMes / ingresosProyectadosMes) * 100 : 0
       } else {
-        // Para admin, sumamos el total cobrado de las atenciones pagadas
-        ingresosMes = atencionesPagadasMes.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
+        // Para admin, mostramos un flujo simple: ingresos -> costos -> utilidad
         const reporteMensual = await reportesService.getReporteMensual(year, month, currentSucursal?.id)
-        costosMes = reporteMensual.total_costos
-        utilidadMes = reporteMensual.utilidad_neta
-        margenMes = reporteMensual.ingresos_totales > 0 ? (reporteMensual.utilidad_neta / reporteMensual.ingresos_totales) * 100 : 0
+        ingresosMes = reporteMensual.ingresos_totales
+        ingresosCobradosMes = reporteMensual.ingresos_cobrados
+        ingresosPendientesMes = Math.max(ingresosMes - ingresosCobradosMes, 0)
+        ingresosProyectadosMes = reporteMensual.ingresos_totales
+        pagosProfesionalesMes = reporteMensual.total_pagado_profesionales
+        costosOperativosMes = reporteMensual.total_costos
+        costosMes = pagosProfesionalesMes + costosOperativosMes
+        utilidadMes = ingresosMes - costosMes
+        margenMes = ingresosMes > 0 ? (utilidadMes / ingresosMes) * 100 : 0
       }
 
       // 5. Atenciones Pendientes (filtered)
@@ -224,8 +236,11 @@ const Dashboard = () => {
         totalPacientes: metric2Value,
         totalAtencionesMes: atencionesMesActivas.length,
         ingresosMes,
+        ingresosCobradosMes,
         ingresosPendientesMes,
         ingresosProyectadosMes,
+        pagosProfesionalesMes,
+        costosOperativosMes,
         costosMes,
         utilidadMes,
         margenMes,
@@ -300,57 +315,96 @@ const Dashboard = () => {
         />
 
         <DashboardStatCard
-          title={isProfesional ? 'Mis Ganancias Cobradas' : 'Ingresos Cobrados'}
+          title={isProfesional ? 'Mis Ganancias Cobradas' : 'Ingresos del Mes'}
           value={formatCLP(stats.ingresosMes)}
           icon={DollarSign}
           iconClassName="bg-purple-600 text-white"
           valueClassName="text-purple-600 text-[2rem]"
+          subtitle={!isProfesional ? `Cobrado: ${formatCLP(stats.ingresosCobradosMes)}` : undefined}
         />
       </div>
 
       <div className={`grid grid-cols-1 md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-3' : 'xl:grid-cols-3 2xl:grid-cols-5'} gap-6 items-stretch`}>
-        <DashboardStatCard
-          title={isProfesional ? 'Por Cobrar' : 'Pendiente por Cobrar'}
-          value={formatCLP(stats.ingresosPendientesMes)}
-          icon={CreditCard}
-          iconClassName="bg-amber-100 text-amber-700"
-          valueClassName="text-amber-600 text-[2rem]"
-        />
+        {isProfesional ? (
+          <>
+            <DashboardStatCard
+              title="Por Cobrar"
+              value={formatCLP(stats.ingresosPendientesMes)}
+              icon={CreditCard}
+              iconClassName="bg-amber-100 text-amber-700"
+              valueClassName="text-amber-600 text-[2rem]"
+            />
 
-        <DashboardStatCard
-          title={isProfesional ? 'Proyección del Mes' : 'Ingreso Proyectado'}
-          value={formatCLP(stats.ingresosProyectadosMes)}
-          icon={Wallet}
-          iconClassName="bg-blue-100 text-blue-700"
-          valueClassName="text-blue-600 text-[2rem]"
-        />
+            <DashboardStatCard
+              title="Proyección del Mes"
+              value={formatCLP(stats.ingresosProyectadosMes)}
+              icon={Wallet}
+              iconClassName="bg-blue-100 text-blue-700"
+              valueClassName="text-blue-600 text-[2rem]"
+            />
 
-        {!isProfesional && (
-          <DashboardStatCard
-            title="Costos del Mes"
-            value={formatCLP(stats.costosMes)}
-            icon={PiggyBank}
-            iconClassName="bg-rose-100 text-rose-700"
-            valueClassName="text-rose-600 text-[2rem]"
-          />
+            <DashboardStatCard
+              title="Rendimiento Cobrado"
+              value={formatCLP(stats.utilidadMes)}
+              icon={TrendingUp}
+              iconClassName={stats.utilidadMes >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}
+              valueClassName={`${stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'} text-[2rem]`}
+            />
+
+            <DashboardStatCard
+              title="Cobrado / Proyectado"
+              value={`${stats.margenMes.toFixed(1)}%`}
+              icon={BarChart3}
+              iconClassName="bg-slate-100 text-slate-700"
+              valueClassName="text-slate-700"
+            />
+          </>
+        ) : (
+          <>
+            <DashboardStatCard
+              title="Cobrado"
+              value={formatCLP(stats.ingresosCobradosMes)}
+              icon={CreditCard}
+              iconClassName="bg-amber-100 text-amber-700"
+              valueClassName="text-amber-600 text-[2rem]"
+            />
+
+            <DashboardStatCard
+              title="Por Cobrar"
+              value={formatCLP(stats.ingresosPendientesMes)}
+              icon={Wallet}
+              iconClassName="bg-blue-100 text-blue-700"
+              valueClassName="text-blue-600 text-[2rem]"
+            />
+
+            <DashboardStatCard
+              title="Costos Totales"
+              value={formatCLP(stats.costosMes)}
+              icon={PiggyBank}
+              iconClassName="bg-rose-100 text-rose-700"
+              valueClassName="text-rose-600 text-[2rem]"
+              subtitle={`Prof: ${formatCLP(stats.pagosProfesionalesMes)} + Op: ${formatCLP(stats.costosOperativosMes)}`}
+            />
+
+            <DashboardStatCard
+              title="Utilidad Neta"
+              value={formatCLP(stats.utilidadMes)}
+              icon={TrendingUp}
+              iconClassName={stats.utilidadMes >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}
+              valueClassName={`${stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'} text-[2rem]`}
+              subtitle="Ingresos - Costos totales"
+            />
+
+            <DashboardStatCard
+              title="Margen del Mes"
+              value={`${stats.margenMes.toFixed(1)}%`}
+              icon={BarChart3}
+              iconClassName="bg-slate-100 text-slate-700"
+              valueClassName="text-slate-700"
+              subtitle={`Canceladas: ${stats.citasCanceladasMes}`}
+            />
+          </>
         )}
-
-        <DashboardStatCard
-          title={isProfesional ? 'Rendimiento Cobrado' : 'Utilidad Neta'}
-          value={formatCLP(stats.utilidadMes)}
-          icon={TrendingUp}
-          iconClassName={stats.utilidadMes >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}
-          valueClassName={`${stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'} text-[2rem]`}
-        />
-
-        <DashboardStatCard
-          title={isProfesional ? 'Cobrado / Proyectado' : 'Margen del Mes'}
-          value={`${stats.margenMes.toFixed(1)}%`}
-          icon={BarChart3}
-          iconClassName="bg-slate-100 text-slate-700"
-          valueClassName="text-slate-700"
-          subtitle={!isProfesional ? `Canceladas: ${stats.citasCanceladasMes}` : undefined}
-        />
       </div>
       
       <div className="bg-white rounded-lg shadow-md p-6">
