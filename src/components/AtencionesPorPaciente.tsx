@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion, Paciente } from '@/types/database'
 import { atencionesService, pacientesService } from '@/utils/supabase'
+import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { formatCLP } from '@/utils/currency'
 
 const AtencionesPorPaciente = () => {
@@ -193,6 +194,7 @@ const AtencionesPorPaciente = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Profesional</th>
                   )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cita</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pago</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Boleta</th>
@@ -215,6 +217,11 @@ const AtencionesPorPaciente = () => {
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {atencion.tipos_atencion?.nombre || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getEstadoCitaBadgeClass(atencion.estado_cita)}`}>
+                        {getEstadoCitaLabel(atencion.estado_cita)}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {formatCLP(atencion.valor_cobrado)}
@@ -264,4 +271,3 @@ const AtencionesPorPaciente = () => {
 }
 
 export default AtencionesPorPaciente
-

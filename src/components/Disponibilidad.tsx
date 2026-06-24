@@ -162,7 +162,7 @@ const Disponibilidad = () => {
       )
 
       const map: Record<string, Atencion[]> = {}
-      for (const atencion of atenciones) {
+      for (const atencion of atenciones.filter(item => item.estado_cita !== 'cancelada')) {
         if (!map[atencion.fecha]) map[atencion.fecha] = []
         map[atencion.fecha].push(atencion)
       }

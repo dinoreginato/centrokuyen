@@ -31,6 +31,8 @@ export interface Paciente {
   updated_at: string
 }
 
+export type EstadoCita = 'por_confirmar' | 'confirmada' | 'cancelada' | 'reagendada'
+
 export interface Atencion {
   id: string
   profesional_id: string
@@ -40,6 +42,7 @@ export interface Atencion {
   tipo_atencion: string
   valor_cobrado: number
   pagado: boolean
+  estado_cita?: EstadoCita
   estado_asistencia?: 'pendiente' | 'asistio' | 'no_asistio' // Nuevo campo
   numero_boleta?: string // Nuevo campo para número de boleta
   observaciones: string

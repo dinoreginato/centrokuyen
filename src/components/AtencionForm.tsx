@@ -4,9 +4,24 @@ import { Save, X, User, Stethoscope, DollarSign, Clock, Calendar, FileText, Repe
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { Profesional, Paciente, TipoAtencion } from '@/types/database'
+import { EstadoCita, Profesional, Paciente, TipoAtencion } from '@/types/database'
 import { atencionesService, profesionalesService, pacientesService, tiposAtencionService } from '@/utils/supabase'
+import { ESTADO_CITA_OPTIONS } from '@/utils/atencionEstado'
 import { addWeeks, format, parseISO } from 'date-fns'
+
+type AtencionFormData = {
+  profesional_id: string
+  paciente_id: string
+  fecha: string
+  hora: string
+  tipo_atencion: string
+  valor_cobrado: number
+  pagado: boolean
+  estado_cita: EstadoCita
+  numero_boleta: string
+  observaciones: string
+  recurrencia: number
+}
 
 const AtencionForm = () => {
   const navigate = useNavigate()
@@ -25,7 +40,7 @@ const AtencionForm = () => {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<AtencionFormData>({
     profesional_id: '',
     paciente_id: '',
     fecha: '',
@@ -33,6 +48,7 @@ const AtencionForm = () => {
     tipo_atencion: '',
     valor_cobrado: 0,
     pagado: false,
+    estado_cita: 'por_confirmar',
     numero_boleta: '',
     observaciones: '',
     recurrencia: 1 // 1 = Solo esta sesión, 4 = Plan Mensual (4 sesiones), etc.
@@ -120,6 +136,7 @@ const AtencionForm = () => {
           tipo_atencion: atencion.tipo_atencion,
           valor_cobrado: atencion.valor_cobrado,
           pagado: atencion.pagado,
+          estado_cita: atencion.estado_cita || 'por_confirmar',
           numero_boleta: atencion.numero_boleta || '',
           observaciones: atencion.observaciones,
           recurrencia: 1
@@ -440,6 +457,25 @@ const AtencionForm = () => {
               </div>
             </div>
           )}
+
+          <div>
+            <label htmlFor="estado_cita" className="block text-sm font-medium text-gray-700 mb-2">
+              Estado de la Cita
+            </label>
+            <select
+              id="estado_cita"
+              name="estado_cita"
+              value={formData.estado_cita}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+            >
+              {ESTADO_CITA_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div>

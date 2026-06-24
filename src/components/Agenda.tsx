@@ -4,8 +4,9 @@ import { Plus, Edit, Trash2, Settings, MessageCircle, DollarSign, CheckCircle, X
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
-import { Atencion } from '@/types/database'
+import { Atencion, EstadoCita } from '@/types/database'
 import { atencionesService } from '@/utils/supabase'
+import { ESTADO_CITA_OPTIONS, getEstadoCitaBadgeClass, getEstadoCitaCardClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfMonth, endOfMonth, isSameMonth, differenceInYears } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -18,6 +19,7 @@ const Agenda = () => {
   const [currentWeek, setCurrentWeek] = useState(new Date())
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week')
+  const [estadoCitaFilter, setEstadoCitaFilter] = useState<'todos' | EstadoCita>('todos')
 
   useEffect(() => {
     if (currentSucursal) {
@@ -101,6 +103,17 @@ const Agenda = () => {
     } catch (error) {
       toast.error('Error al actualizar estado de pago')
       console.error('Error toggling payment:', error)
+    }
+  }
+
+  const updateEstadoCita = async (atencion: Atencion, nuevoEstado: EstadoCita) => {
+    try {
+      await atencionesService.update(atencion.id, { estado_cita: nuevoEstado })
+      toast.success(`Cita marcada como ${getEstadoCitaLabel(nuevoEstado).toLowerCase()}`)
+      loadData()
+    } catch (error) {
+      toast.error('Error al actualizar estado de la cita')
+      console.error('Error updating estado_cita:', error)
     }
   }
 
@@ -212,25 +225,40 @@ Gracias 🙌🏻`
 
       <div className="bg-white rounded-lg shadow-md p-4">
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-          <div className="flex items-center space-x-2 bg-gray-100 p-1 rounded-lg">
-             <button
-               onClick={() => setViewMode('month')}
-               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'month' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-             >
-               Mes
-             </button>
-             <button
-               onClick={() => setViewMode('week')}
-               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'week' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-             >
-               Semana
-             </button>
-             <button
-               onClick={() => setViewMode('day')}
-               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'day' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-             >
-               Día
-             </button>
+          <div className="flex flex-col md:flex-row items-center gap-3">
+            <div className="flex items-center space-x-2 bg-gray-100 p-1 rounded-lg">
+              <button
+                onClick={() => setViewMode('month')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'month' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                Mes
+              </button>
+              <button
+                onClick={() => setViewMode('week')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'week' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                Semana
+              </button>
+              <button
+                onClick={() => setViewMode('day')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'day' ? 'bg-white text-medical-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                Día
+              </button>
+            </div>
+
+            <select
+              value={estadoCitaFilter}
+              onChange={(e) => setEstadoCitaFilter(e.target.value as 'todos' | EstadoCita)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-medical-blue focus:border-medical-blue"
+            >
+              <option value="todos">Todas las citas</option>
+              {ESTADO_CITA_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex items-center space-x-2">
@@ -264,6 +292,7 @@ Gracias 🙌🏻`
             {daysToShow.map((day) => {
               const dayAppointments = atenciones
                 .filter((a) => isSameDay(parseISO(a.fecha), day))
+                .filter((a) => estadoCitaFilter === 'todos' ? true : (a.estado_cita || 'por_confirmar') === estadoCitaFilter)
                 .sort((a, b) => a.hora.localeCompare(b.hora))
               
               const isCurrentMonth = viewMode === 'month' ? isSameMonth(day, currentMonth) : true
@@ -293,9 +322,7 @@ Gracias 🙌🏻`
                         <div
                           key={atencion.id}
                           className={`relative p-2 rounded-md border text-xs shadow-sm transition-all hover:shadow-md group ${
-                            atencion.estado_asistencia === 'no_asistio' ? 'bg-red-50 border-red-100' :
-                            atencion.pagado ? 'bg-green-50 border-green-100' : 
-                            'bg-white border-gray-200 hover:border-blue-300'
+                            getEstadoCitaCardClass(atencion.estado_cita, atencion.pagado, atencion.estado_asistencia)
                           }`}
                         >
                           <div className="flex justify-between items-start mb-1.5">
@@ -313,6 +340,10 @@ Gracias 🙌🏻`
                                 <DollarSign className="h-3 w-3 text-green-600" />
                               )}
                             </div>
+                          </div>
+
+                          <div className={`inline-flex px-1.5 py-0.5 rounded border text-[10px] font-medium mb-1.5 ${getEstadoCitaBadgeClass(atencion.estado_cita)}`}>
+                            {getEstadoCitaLabel(atencion.estado_cita)}
                           </div>
 
                           <div className="mb-2">
@@ -346,9 +377,37 @@ Gracias 🙌🏻`
                             )}
                           </div>
 
-                          <div className="flex justify-end items-center space-x-1 pt-1.5 border-t border-gray-100 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="space-y-1.5 pt-1.5 border-t border-gray-100 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                            {(user?.rol === 'admin' || (user?.rol === 'profesional' && user.profesional_id === atencion.profesional_id)) && (
+                              <div className="flex flex-wrap gap-1">
+                                <button
+                                  onClick={() => updateEstadoCita(atencion, 'confirmada')}
+                                  className={`px-2 py-1 rounded text-[10px] border ${atencion.estado_cita === 'confirmada' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:border-green-300 hover:text-green-700'}`}
+                                  title="Confirmar cita"
+                                >
+                                  Confirmar
+                                </button>
+                                <button
+                                  onClick={() => updateEstadoCita(atencion, 'cancelada')}
+                                  className={`px-2 py-1 rounded text-[10px] border ${atencion.estado_cita === 'cancelada' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:border-red-300 hover:text-red-700'}`}
+                                  title="Cancelar cita"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  onClick={() => updateEstadoCita(atencion, 'reagendada')}
+                                  className={`px-2 py-1 rounded text-[10px] border ${atencion.estado_cita === 'reagendada' ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300 hover:text-purple-700'}`}
+                                  title="Marcar como reagendada"
+                                >
+                                  Reagendar
+                                </button>
+                              </div>
+                            )}
+
+                            <div className="flex justify-end items-center space-x-1">
                             <button
                               onClick={() => toggleAsistencia(atencion, 'asistio')}
+                              disabled={atencion.estado_cita === 'cancelada'}
                               className={`p-1 rounded hover:bg-green-50 ${atencion.estado_asistencia === 'asistio' ? 'text-green-600' : 'text-gray-400 hover:text-green-600'}`}
                               title="Asistió"
                             >
@@ -357,6 +416,7 @@ Gracias 🙌🏻`
                             
                             <button
                               onClick={() => toggleAsistencia(atencion, 'no_asistio')}
+                              disabled={atencion.estado_cita === 'cancelada'}
                               className={`p-1 rounded hover:bg-red-50 ${atencion.estado_asistencia === 'no_asistio' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
                               title="No Asistió"
                             >
@@ -403,6 +463,7 @@ Gracias 🙌🏻`
                                 </button>
                               </>
                             )}
+                            </div>
                           </div>
                         </div>
                       ))
