@@ -6,6 +6,7 @@ import { useSucursal } from '@/contexts/SucursalContext'
 import Notifications from '@/components/Notifications'
 import { Atencion } from '@/types/database'
 import { atencionesService } from '@/utils/supabase'
+import { addDays, subDays } from 'date-fns'
 
 const Header = () => {
   const { user, logout } = useAuth()
@@ -22,18 +23,22 @@ const Header = () => {
     }, 5 * 60 * 1000)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [currentSucursal?.id, user?.rol, user?.profesional_id])
 
   const loadAppointments = async () => {
     try {
       const today = new Date()
-      const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
+      const startWindow = subDays(today, 45)
+      const nextWeek = addDays(today, 7)
       
-      const startDate = today.toISOString().split('T')[0]
+      const startDate = startWindow.toISOString().split('T')[0]
       const endDate = nextWeek.toISOString().split('T')[0]
       
-      const data = await atencionesService.getByDateRange(startDate, endDate)
-      setAppointments(data)
+      const data = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id)
+      const filteredData = (user?.rol === 'profesional' && user.profesional_id)
+        ? data.filter(appointment => appointment.profesional_id === user.profesional_id)
+        : data
+      setAppointments(filteredData)
     } catch (error) {
       console.error('Error loading appointments for notifications:', error)
     }

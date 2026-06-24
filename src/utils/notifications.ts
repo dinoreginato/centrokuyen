@@ -1,5 +1,5 @@
 import { Atencion } from '@/types/database';
-import { format, addDays, addHours, isBefore, isAfter } from 'date-fns';
+import { format, addDays, addHours, differenceInCalendarDays, isBefore, isAfter } from 'date-fns';
 
 // Types for notifications
 export interface Notification {
@@ -14,12 +14,18 @@ export interface Notification {
 
 // Notification service for appointment reminders and system notifications
 export const notificationService = {
+  isNotifiableAppointment: (appointment: Atencion) => {
+    return !appointment.es_bloqueo && appointment.estado_cita !== 'cancelada';
+  },
+
   // Check for upcoming appointments and create reminders
   checkAppointmentReminders: (appointments: Atencion[]): Notification[] => {
     const notifications: Notification[] = [];
     const now = new Date();
     
     appointments.forEach(appointment => {
+      if (!notificationService.isNotifiableAppointment(appointment)) return;
+
       const appointmentDate = new Date(appointment.fecha + ' ' + appointment.hora);
       
       // 24-hour reminder
@@ -75,12 +81,24 @@ export const notificationService = {
     const now = new Date();
     
     appointments.forEach(appointment => {
-      if (!appointment.pagado) {
+      if (notificationService.isNotifiableAppointment(appointment) && !appointment.pagado && appointment.estado_asistencia !== 'no_asistio') {
         const appointmentDate = new Date(appointment.fecha + ' ' + appointment.hora);
-        const daysSinceAppointment = Math.floor((now.getTime() - appointmentDate.getTime()) / (1000 * 60 * 60 * 24));
+        const daysSinceAppointment = differenceInCalendarDays(now, appointmentDate);
         
+        if (daysSinceAppointment >= 3) {
+          notifications.push({
+            id: `payment_3days_${appointment.id}`,
+            type: 'payment_due',
+            title: 'Pago pendiente - 3 días',
+            message: `La atención de ${appointment.paciente_nombre || appointment.paciente?.nombre || 'Paciente'} del ${format(appointmentDate, 'dd/MM/yyyy')} sigue pendiente de pago.`,
+            timestamp: now,
+            read: false,
+            data: appointment
+          });
+        }
+
         // Reminder after 7 days
-        if (daysSinceAppointment === 7) {
+        if (daysSinceAppointment >= 7) {
           notifications.push({
             id: `payment_7days_${appointment.id}`,
             type: 'payment_due',
@@ -93,7 +111,7 @@ export const notificationService = {
         }
         
         // Reminder after 30 days
-        if (daysSinceAppointment === 30) {
+        if (daysSinceAppointment >= 30) {
           notifications.push({
             id: `payment_30days_${appointment.id}`,
             type: 'payment_due',
@@ -116,6 +134,27 @@ export const notificationService = {
     const paymentReminders = notificationService.checkPaymentReminders(appointments);
     
     return [...appointmentReminders, ...paymentReminders]
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  },
+
+  mergeNotifications: (incomingNotifications: Notification[]) => {
+    const existingNotifications = notificationService.loadNotifications();
+    const notificationMap = new Map<string, Notification>();
+
+    existingNotifications.forEach(notification => {
+      notificationMap.set(notification.id, notification);
+    });
+
+    incomingNotifications.forEach(notification => {
+      const existing = notificationMap.get(notification.id);
+      notificationMap.set(notification.id, existing ? {
+        ...notification,
+        read: existing.read,
+        timestamp: existing.timestamp || notification.timestamp
+      } : notification);
+    });
+
+    return Array.from(notificationMap.values())
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   },
 
@@ -232,10 +271,10 @@ export const autoNotificationService = {
 
   checkAndNotify: (appointments: Atencion[]) => {
     const notifications = notificationService.getTodayNotifications(appointments);
+    const existingNotifications = notificationService.loadNotifications();
     
     // Show browser notifications for new unread notifications
     notifications.forEach(notification => {
-      const existingNotifications = notificationService.loadNotifications();
       const exists = existingNotifications.some(n => n.id === notification.id);
       
       if (!exists) {
@@ -243,8 +282,8 @@ export const autoNotificationService = {
       }
     });
     
-    // Save all notifications
-    notificationService.saveNotifications(notifications);
+    // Save notifications preserving read state and previous history
+    notificationService.saveNotifications(notificationService.mergeNotifications(notifications));
     
     // Clear old notifications
     notificationService.clearOldNotifications();

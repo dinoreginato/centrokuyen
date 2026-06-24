@@ -40,13 +40,16 @@ const Notifications = ({ appointments }: NotificationsProps) => {
     )
     
     if (hasNewNotifications) {
-      notificationService.saveNotifications(newNotifications)
+      const mergedNotifications = notificationService.mergeNotifications(newNotifications)
+      notificationService.saveNotifications(mergedNotifications)
       loadNotifications()
       
       // Show toast for new notifications
-      const newUnreadCount = newNotifications.filter(n => !n.read).length
-      if (newUnreadCount > 0) {
-        toast.info(`Tienes ${newUnreadCount} nueva${newUnreadCount > 1 ? 's' : ''} notificación${newUnreadCount > 1 ? 'es' : ''}`)
+      const freshNotifications = newNotifications.filter(newNotif =>
+        !existingNotifications.some(existingNotif => existingNotif.id === newNotif.id)
+      )
+      if (freshNotifications.length > 0) {
+        toast.info(`Tienes ${freshNotifications.length} nueva${freshNotifications.length > 1 ? 's' : ''} notificación${freshNotifications.length > 1 ? 'es' : ''}`)
       }
     }
   }
@@ -108,10 +111,10 @@ const Notifications = ({ appointments }: NotificationsProps) => {
     // Handle different notification types
     if (notification.type === 'appointment_reminder' && notification.data) {
       // Navigate to appointment or show details
-      toast.info(`Cita con ${notification.data.paciente_nombre} - ${notification.data.fecha} ${notification.data.hora}`)
+      toast.info(`Cita con ${notification.data.paciente?.nombre || notification.data.paciente_nombre || 'Paciente'} - ${notification.data.fecha} ${notification.data.hora}`)
     } else if (notification.type === 'payment_due' && notification.data) {
       // Navigate to payment section
-      toast.info(`Pago pendiente por atención a ${notification.data.paciente_nombre}`)
+      toast.info(`Pago pendiente por atención a ${notification.data.paciente?.nombre || notification.data.paciente_nombre || 'Paciente'}`)
     }
   }
 

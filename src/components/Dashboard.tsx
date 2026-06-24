@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { profesionalesService, pacientesService, atencionesService, profesionalComisionesService, reportesService } from '@/utils/supabase'
-import { format as dateFormat, startOfMonth, endOfMonth, parseISO } from 'date-fns'
+import { format as dateFormat, startOfMonth, endOfMonth, parseISO, addDays, subDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import DashboardCharts from './DashboardCharts'
 import { autoNotificationService, notificationService } from '@/utils/notifications'
@@ -42,9 +42,10 @@ const Dashboard = () => {
   const checkNotifications = async () => {
     try {
       const today = new Date()
-      const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
+      const startWindow = subDays(today, 45)
+      const nextWeek = addDays(today, 7)
       
-      const startDate = today.toISOString().split('T')[0]
+      const startDate = startWindow.toISOString().split('T')[0]
       const endDate = nextWeek.toISOString().split('T')[0]
       
       const appointments = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id)
