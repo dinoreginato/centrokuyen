@@ -270,6 +270,32 @@ export const atencionesService = {
     return data || []
   },
 
+  async getByProfesionalAndDateRange(profesionalId: string, startDate: string, endDate: string, sucursalId?: string): Promise<Atencion[]> {
+    let query = supabase
+      .from('atenciones')
+      .select(`
+        *,
+        profesional:profesionales(*),
+        paciente:pacientes(*),
+        tipos_atencion(*)
+      `)
+      .eq('activo', true)
+      .eq('profesional_id', profesionalId)
+      .gte('fecha', startDate)
+      .lte('fecha', endDate)
+      .order('fecha', { ascending: true })
+      .order('hora', { ascending: true })
+
+    if (sucursalId) {
+      query = query.eq('sucursal_id', sucursalId)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+    return data || []
+  },
+
   async create(atencion: Omit<Atencion, 'id' | 'created_at' | 'updated_at'>): Promise<Atencion> {
     const { data, error } = await supabase
       .from('atenciones')

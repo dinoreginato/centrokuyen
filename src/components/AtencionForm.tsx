@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Save, X, User, Stethoscope, DollarSign, Clock, Calendar, FileText, Repeat } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
@@ -11,6 +11,7 @@ import { addWeeks, format, parseISO } from 'date-fns'
 const AtencionForm = () => {
   const navigate = useNavigate()
   const { id } = useParams()
+  const location = useLocation()
   const { currentSucursal } = useSucursal()
   const { user } = useAuth()
   const isEditing = !!id
@@ -50,6 +51,25 @@ const AtencionForm = () => {
       loadAtencion()
     }
   }, [id])
+
+  useEffect(() => {
+    if (isEditing) return
+    const params = new URLSearchParams(location.search)
+    const profesionalId = params.get('profesional_id')
+    const fecha = params.get('fecha')
+    const hora = params.get('hora')
+    const pacienteId = params.get('paciente_id')
+
+    if (!profesionalId && !fecha && !hora && !pacienteId) return
+
+    setFormData(prev => ({
+      ...prev,
+      profesional_id: (user?.rol === 'profesional' ? prev.profesional_id : (profesionalId || prev.profesional_id)),
+      fecha: fecha || prev.fecha,
+      hora: hora || prev.hora,
+      paciente_id: pacienteId || prev.paciente_id
+    }))
+  }, [location.search, isEditing, user?.rol])
 
   // Sincronizar nombre del paciente cuando cargan los datos o se edita
   useEffect(() => {
@@ -231,15 +251,9 @@ const AtencionForm = () => {
 
   const generateTimeSlots = () => {
     const slots = []
-    for (let i = 8; i <= 22; i++) {
-      for (let j = 0; j < 60; j += 15) {
-        // Stop at 22:00
-        if (i === 22 && j > 0) break
-        
-        const hour = i.toString().padStart(2, '0')
-        const minute = j.toString().padStart(2, '0')
-        slots.push(`${hour}:${minute}`)
-      }
+    for (let i = 8; i <= 21; i++) {
+      const hour = i.toString().padStart(2, '0')
+      slots.push(`${hour}:00`)
     }
     return slots
   }
