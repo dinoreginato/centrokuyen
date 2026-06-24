@@ -31,13 +31,13 @@ const DashboardStatCard = ({
   to
 }: DashboardStatCardProps) => {
   const cardContent = (
-    <div className="bg-white rounded-xl shadow-md border border-gray-100 p-5 min-h-[138px] h-full transition-all hover:shadow-lg">
+    <div className="bg-white rounded-xl shadow-md border border-gray-100 p-5 min-h-[152px] h-full transition-all hover:shadow-lg">
       <div className="flex items-start justify-between gap-4 h-full">
         <div className="flex-1 min-w-0 pr-2">
           <p className="text-sm font-medium text-gray-600 leading-5 min-h-[40px]">
             {title}
           </p>
-          <p className={`mt-3 text-3xl font-bold leading-none break-words ${valueClassName}`}>
+          <p className={`mt-3 text-[clamp(1.9rem,2.2vw,2.75rem)] font-bold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap ${valueClassName}`}>
             {value}
           </p>
           {subtitle && (
@@ -319,12 +319,12 @@ const Dashboard = () => {
           value={formatCLP(stats.ingresosMes)}
           icon={DollarSign}
           iconClassName="bg-purple-600 text-white"
-          valueClassName="text-purple-600 text-[2rem]"
+          valueClassName="text-purple-600"
           subtitle={!isProfesional ? `Cobrado: ${formatCLP(stats.ingresosCobradosMes)}` : undefined}
         />
       </div>
 
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-3' : 'xl:grid-cols-3 2xl:grid-cols-5'} gap-6 items-stretch`}>
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-3' : 'xl:grid-cols-3'} gap-6 items-stretch`}>
         {isProfesional ? (
           <>
             <DashboardStatCard
@@ -332,7 +332,7 @@ const Dashboard = () => {
               value={formatCLP(stats.ingresosPendientesMes)}
               icon={CreditCard}
               iconClassName="bg-amber-100 text-amber-700"
-              valueClassName="text-amber-600 text-[2rem]"
+              valueClassName="text-amber-600"
             />
 
             <DashboardStatCard
@@ -340,7 +340,7 @@ const Dashboard = () => {
               value={formatCLP(stats.ingresosProyectadosMes)}
               icon={Wallet}
               iconClassName="bg-blue-100 text-blue-700"
-              valueClassName="text-blue-600 text-[2rem]"
+              valueClassName="text-blue-600"
             />
 
             <DashboardStatCard
@@ -348,7 +348,7 @@ const Dashboard = () => {
               value={formatCLP(stats.utilidadMes)}
               icon={TrendingUp}
               iconClassName={stats.utilidadMes >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}
-              valueClassName={`${stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'} text-[2rem]`}
+              valueClassName={stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'}
             />
 
             <DashboardStatCard
@@ -366,7 +366,7 @@ const Dashboard = () => {
               value={formatCLP(stats.ingresosCobradosMes)}
               icon={CreditCard}
               iconClassName="bg-amber-100 text-amber-700"
-              valueClassName="text-amber-600 text-[2rem]"
+              valueClassName="text-amber-600"
             />
 
             <DashboardStatCard
@@ -374,7 +374,7 @@ const Dashboard = () => {
               value={formatCLP(stats.ingresosPendientesMes)}
               icon={Wallet}
               iconClassName="bg-blue-100 text-blue-700"
-              valueClassName="text-blue-600 text-[2rem]"
+              valueClassName="text-blue-600"
             />
 
             <DashboardStatCard
@@ -382,7 +382,7 @@ const Dashboard = () => {
               value={formatCLP(stats.costosMes)}
               icon={PiggyBank}
               iconClassName="bg-rose-100 text-rose-700"
-              valueClassName="text-rose-600 text-[2rem]"
+              valueClassName="text-rose-600"
               subtitle={`Prof: ${formatCLP(stats.pagosProfesionalesMes)} + Op: ${formatCLP(stats.costosOperativosMes)}`}
             />
 
@@ -391,7 +391,7 @@ const Dashboard = () => {
               value={formatCLP(stats.utilidadMes)}
               icon={TrendingUp}
               iconClassName={stats.utilidadMes >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}
-              valueClassName={`${stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'} text-[2rem]`}
+              valueClassName={stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'}
               subtitle="Ingresos - Costos totales"
             />
 
