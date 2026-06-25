@@ -45,7 +45,7 @@ const DashboardStatCard = ({
         </div>
 
         <div className="mt-auto">
-          <p className={`overflow-hidden text-ellipsis text-[clamp(1.9rem,2.5vw,2.8rem)] font-bold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap ${valueClassName}`}>
+          <p className={`text-[clamp(1.55rem,2.15vw,2.45rem)] font-bold leading-tight tracking-tight tabular-nums break-words ${valueClassName}`}>
             {value}
           </p>
           {subtitle && (
@@ -329,7 +329,7 @@ const Dashboard = () => {
         />
       </div>
 
-      <div className={`grid grid-cols-1 gap-5 items-stretch md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-4' : 'xl:grid-cols-3 2xl:grid-cols-5'}`}>
+      <div className={`grid grid-cols-1 gap-5 items-stretch md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-4' : 'xl:grid-cols-3 2xl:grid-cols-4'}`}>
         {isProfesional ? (
           <>
             <DashboardStatCard
