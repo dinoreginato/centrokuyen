@@ -229,14 +229,14 @@ const Dashboard = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-3xl font-bold text-gray-800">Dashboard Principal</h1>
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
           <input
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-medical-blue focus:border-transparent text-sm"
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-medical-blue focus:border-transparent"
           />
-          <div className="text-sm text-gray-500 hidden sm:block">
+          <div className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 shadow-sm hidden sm:block">
             {dateFormat(new Date(), 'EEEE d MMMM yyyy', { locale: es })}
           </div>
         </div>
@@ -280,70 +280,84 @@ const Dashboard = () => {
         />
       </div>
       
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Accesos Rápidos</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-800">Accesos Rápidos</h2>
+            <p className="text-sm text-gray-500">Atajos para las acciones que usas con mayor frecuencia.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
           {!isProfesional && (
             <Link
               to="/profesionales/nuevo"
-              className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              className="group rounded-2xl border border-gray-100 bg-gray-50/80 p-4 transition-all hover:-translate-y-0.5 hover:border-medical-blue/20 hover:bg-white hover:shadow-sm"
             >
-              <div className="bg-medical-blue text-white rounded-full p-3 mb-2">
+              <div className="mb-3 inline-flex rounded-full bg-medical-blue p-3 text-white shadow-sm transition-transform group-hover:scale-105">
                 <Users className="h-6 w-6" />
               </div>
-              <span className="text-sm font-medium text-gray-700">Nuevo Profesional</span>
+              <p className="text-sm font-semibold text-gray-800">Nuevo Profesional</p>
+              <p className="mt-1 text-xs text-gray-500">Registrar un nuevo integrante del equipo.</p>
             </Link>
           )}
 
           {canManagePacientes && (
             <Link
               to="/pacientes/nuevo"
-              className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              className="group rounded-2xl border border-gray-100 bg-gray-50/80 p-4 transition-all hover:-translate-y-0.5 hover:border-medical-green/20 hover:bg-white hover:shadow-sm"
             >
-              <div className="bg-medical-green text-white rounded-full p-3 mb-2">
+              <div className="mb-3 inline-flex rounded-full bg-medical-green p-3 text-white shadow-sm transition-transform group-hover:scale-105">
                 <UserPlus className="h-6 w-6" />
               </div>
-              <span className="text-sm font-medium text-gray-700">Nuevo Paciente</span>
+              <p className="text-sm font-semibold text-gray-800">Nuevo Paciente</p>
+              <p className="mt-1 text-xs text-gray-500">Agregar una ficha nueva al sistema.</p>
             </Link>
           )}
 
           <Link
             to="/agenda/nueva"
-            className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            className="group rounded-2xl border border-gray-100 bg-gray-50/80 p-4 transition-all hover:-translate-y-0.5 hover:border-orange-200 hover:bg-white hover:shadow-sm"
           >
-            <div className="bg-orange-600 text-white rounded-full p-3 mb-2">
+            <div className="mb-3 inline-flex rounded-full bg-orange-600 p-3 text-white shadow-sm transition-transform group-hover:scale-105">
               <Calendar className="h-6 w-6" />
             </div>
-            <span className="text-sm font-medium text-gray-700">Nueva Atención</span>
+            <p className="text-sm font-semibold text-gray-800">Nueva Atención</p>
+            <p className="mt-1 text-xs text-gray-500">Agendar una nueva sesión o control.</p>
           </Link>
 
           {!isProfesional && (
               <Link
                 to="/reportes"
-                className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                className="group rounded-2xl border border-gray-100 bg-gray-50/80 p-4 transition-all hover:-translate-y-0.5 hover:border-purple-200 hover:bg-white hover:shadow-sm"
               >
-                <div className="bg-purple-600 text-white rounded-full p-3 mb-2">
+                <div className="mb-3 inline-flex rounded-full bg-purple-600 p-3 text-white shadow-sm transition-transform group-hover:scale-105">
                   <TrendingUp className="h-6 w-6" />
                 </div>
-                <span className="text-sm font-medium text-gray-700">Ver Reportes</span>
+                <p className="text-sm font-semibold text-gray-800">Ver Reportes</p>
+                <p className="mt-1 text-xs text-gray-500">Revisar indicadores y resultados del centro.</p>
               </Link>
           )}
         </div>
       </div>
 
       {stats.proximasAtenciones.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Próximas Atenciones</h2>
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800">Próximas Atenciones</h2>
+              <p className="text-sm text-gray-500">Resumen de las próximas citas agendadas.</p>
+            </div>
+          </div>
           <div className="space-y-3">
             {stats.proximasAtenciones.map(atencion => (
-              <div key={atencion.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className="bg-medical-blue text-white rounded-full p-2">
+              <div key={atencion.id} className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <div className="rounded-full bg-medical-blue p-2.5 text-white shadow-sm">
                     <Activity className="h-4 w-4" />
                   </div>
-                  <div>
-                    <p className="font-medium text-gray-800">{atencion.paciente?.nombre}</p>
-                    <p className="text-sm text-gray-600">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-gray-800">{atencion.paciente?.nombre}</p>
+                    <p className="truncate text-sm text-gray-600">
                       {atencion.profesional?.nombre} - {atencion.tipos_atencion?.nombre || 'Sin tipo'}
                     </p>
                     <p className="text-sm text-gray-500">
@@ -351,7 +365,7 @@ const Dashboard = () => {
                     </p>
                   </div>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                <span className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold ${
                   atencion.estado_asistencia === 'no_asistio'
                     ? 'bg-red-100 text-red-800'
                     : atencion.pagado ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
@@ -364,9 +378,9 @@ const Dashboard = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex items-center mb-4">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex items-center">
             <Bell className="h-6 w-6 text-medical-blue mr-2" />
             <h2 className="text-xl font-semibold text-gray-800">Notificaciones Recientes</h2>
           </div>
@@ -377,7 +391,7 @@ const Dashboard = () => {
               
               if (recentNotifications.length === 0) {
                 return (
-                  <div className="text-center py-4">
+                  <div className="rounded-2xl border border-dashed border-gray-200 py-8 text-center">
                     <Bell className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                     <p className="text-gray-500 text-sm">No hay notificaciones recientes</p>
                   </div>
@@ -385,8 +399,8 @@ const Dashboard = () => {
               }
               
               return recentNotifications.map(notification => (
-                <div key={notification.id} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-shrink-0">
+                <div key={notification.id} className="flex items-start space-x-3 rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+                  <div className="flex-shrink-0 pt-0.5">
                     {notification.type === 'appointment_reminder' && <Calendar className="h-4 w-4 text-blue-500" />}
                     {notification.type === 'payment_due' && <DollarSign className="h-4 w-4 text-orange-500" />}
                     {!notification.read && <div className="w-2 h-2 bg-red-500 rounded-full mt-1"></div>}
@@ -402,8 +416,8 @@ const Dashboard = () => {
               ))
             })()}
           </div>
-          <div className="mt-4 text-center">
-            <Link to="/agenda" className="text-sm text-medical-blue hover:text-blue-700">
+          <div className="mt-5 text-center">
+            <Link to="/agenda" className="inline-flex items-center rounded-full bg-medical-blue/10 px-4 py-2 text-sm font-medium text-medical-blue transition-colors hover:bg-medical-blue/15 hover:text-blue-700">
               Ver todas las notificaciones
             </Link>
           </div>
@@ -411,13 +425,14 @@ const Dashboard = () => {
 
         <div className="space-y-4">
           {stats.atencionesPendientes > 0 && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <Calendar className="h-5 w-5 text-yellow-400" />
+            <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex-shrink-0 rounded-full bg-yellow-100 p-2">
+                  <Calendar className="h-5 w-5 text-yellow-600" />
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm text-yellow-800">
+                <div>
+                  <p className="text-sm font-semibold text-yellow-900">Pendientes de pago</p>
+                  <p className="mt-1 text-sm text-yellow-800">
                     Hay {stats.atencionesPendientes} atenciones pendientes de pago.
                   </p>
                 </div>
@@ -425,13 +440,14 @@ const Dashboard = () => {
             </div>
           )}
           
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Activity className="h-5 w-5 text-blue-400" />
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex-shrink-0 rounded-full bg-blue-100 p-2">
+                <Activity className="h-5 w-5 text-blue-600" />
               </div>
-              <div className="ml-3">
-                <p className="text-sm text-blue-800">
+              <div>
+                <p className="text-sm font-semibold text-blue-900">Agenda de la semana</p>
+                <p className="mt-1 text-sm text-blue-800">
                   {stats.proximasAtenciones.length} citas programadas para los próximos 7 días.
                 </p>
               </div>
@@ -441,8 +457,8 @@ const Dashboard = () => {
       </div>
 
       {!esProfesionalEnRengo && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex items-center mb-4">
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex items-center">
             <BarChart3 className="h-6 w-6 text-medical-blue mr-2" />
             <h2 className="text-xl font-semibold text-gray-800">Análisis y Estadísticas</h2>
           </div>
