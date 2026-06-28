@@ -4,9 +4,48 @@ import { Save, X, User, Stethoscope, DollarSign, Clock, Calendar, FileText, Repe
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { Profesional, Paciente, TipoAtencion } from '@/types/database'
+import { Profesional, Paciente, TipoAtencion, Atencion } from '@/types/database'
 import { atencionesService, profesionalesService, pacientesService, tiposAtencionService } from '@/utils/supabase'
 import { addWeeks, format, parseISO } from 'date-fns'
+
+type EstadoCita = NonNullable<Atencion['estado_cita']>
+type TipoBloqueo = NonNullable<Atencion['tipo_bloqueo']>
+
+const BLOQUEO_OPTIONS: Array<{ value: TipoBloqueo, label: string }> = [
+  { value: 'almuerzo', label: 'Almuerzo' },
+  { value: 'reunion', label: 'Reunión' },
+  { value: 'vacaciones', label: 'Vacaciones' },
+  { value: 'licencia', label: 'Licencia' },
+  { value: 'capacitacion', label: 'Capacitación' },
+  { value: 'otro', label: 'Otro' }
+]
+
+const ESTADO_CITA_OPTIONS: Array<{ value: EstadoCita, label: string }> = [
+  { value: 'por_confirmar', label: 'Por confirmar' },
+  { value: 'confirmada', label: 'Confirmada' },
+  { value: 'cancelada', label: 'Cancelada' },
+  { value: 'reagendada', label: 'Reagendada' }
+]
+
+const getBloqueoLabel = (tipo: TipoBloqueo) => {
+  return BLOQUEO_OPTIONS.find(option => option.value === tipo)?.label || 'Bloqueo'
+}
+
+type AtencionFormData = {
+  profesional_id: string
+  paciente_id: string
+  fecha: string
+  hora: string
+  tipo_atencion: string
+  valor_cobrado: number
+  pagado: boolean
+  numero_boleta: string
+  observaciones: string
+  recurrencia: number
+  estado_cita: EstadoCita
+  es_bloqueo: boolean
+  tipo_bloqueo: TipoBloqueo
+}
 
 const AtencionForm = () => {
   const navigate = useNavigate()
@@ -25,7 +64,7 @@ const AtencionForm = () => {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<AtencionFormData>({
     profesional_id: '',
     paciente_id: '',
     fecha: '',
@@ -35,7 +74,10 @@ const AtencionForm = () => {
     pagado: false,
     numero_boleta: '',
     observaciones: '',
-    recurrencia: 1 // 1 = Solo esta sesión, 4 = Plan Mensual (4 sesiones), etc.
+    recurrencia: 1, // 1 = Solo esta sesión, 4 = Plan Mensual (4 sesiones), etc.
+    estado_cita: 'por_confirmar',
+    es_bloqueo: false,
+    tipo_bloqueo: 'reunion'
   })
 
   // Estado para buscador de pacientes
@@ -59,15 +101,17 @@ const AtencionForm = () => {
     const fecha = params.get('fecha')
     const hora = params.get('hora')
     const pacienteId = params.get('paciente_id')
+    const esBloqueo = params.get('es_bloqueo') === 'true'
 
-    if (!profesionalId && !fecha && !hora && !pacienteId) return
+    if (!profesionalId && !fecha && !hora && !pacienteId && !esBloqueo) return
 
     setFormData(prev => ({
       ...prev,
       profesional_id: (user?.rol === 'profesional' ? prev.profesional_id : (profesionalId || prev.profesional_id)),
       fecha: fecha || prev.fecha,
       hora: hora || prev.hora,
-      paciente_id: pacienteId || prev.paciente_id
+      paciente_id: pacienteId || prev.paciente_id,
+      es_bloqueo: esBloqueo || prev.es_bloqueo
     }))
   }, [location.search, isEditing, user?.rol])
 
@@ -116,7 +160,7 @@ const AtencionForm = () => {
       if (atencion) {
         setFormData({
           profesional_id: atencion.profesional_id,
-          paciente_id: atencion.paciente_id,
+          paciente_id: atencion.paciente_id || '',
           fecha: atencion.fecha,
           hora: atencion.hora.substring(0, 5),
           tipo_atencion: atencion.tipo_atencion,
@@ -124,7 +168,10 @@ const AtencionForm = () => {
           pagado: atencion.pagado,
           numero_boleta: atencion.numero_boleta || '',
           observaciones: atencion.observaciones,
-          recurrencia: 1
+          recurrencia: 1,
+          estado_cita: atencion.estado_cita || 'por_confirmar',
+          es_bloqueo: !!atencion.es_bloqueo,
+          tipo_bloqueo: atencion.tipo_bloqueo || 'reunion'
         })
       }
     } catch (error) {
@@ -141,7 +188,7 @@ const AtencionForm = () => {
       return
     }
 
-    if (!formData.paciente_id) {
+    if (!formData.es_bloqueo && !formData.paciente_id) {
       toast.error('Debe seleccionar un paciente')
       return
     }
@@ -156,12 +203,12 @@ const AtencionForm = () => {
       return
     }
 
-    if (!formData.tipo_atencion) {
+    if (!formData.es_bloqueo && !formData.tipo_atencion) {
       toast.error('Debe seleccionar un tipo de atención')
       return
     }
 
-    if (formData.valor_cobrado <= 0) {
+    if (!formData.es_bloqueo && formData.valor_cobrado <= 0) {
       toast.error('El valor cobrado debe ser mayor a 0')
       return
     }
@@ -173,9 +220,22 @@ const AtencionForm = () => {
 
     try {
       setSaving(true)
-      
+
+      const normalizedData = formData.es_bloqueo
+        ? {
+            ...formData,
+            paciente_id: null,
+            tipo_atencion: getBloqueoLabel(formData.tipo_bloqueo),
+            valor_cobrado: 0,
+            pagado: true,
+            estado_cita: 'confirmada' as EstadoCita,
+            numero_boleta: '',
+            recurrencia: 1
+          }
+        : formData
+
       const dataToSave = {
-        ...formData,
+        ...normalizedData,
         sucursal_id: currentSucursal.id
       }
 
@@ -210,13 +270,18 @@ const AtencionForm = () => {
           toast.success(`Se crearon ${sesiones} sesiones semanales exitosamente`)
         } else {
           await atencionesService.create(baseData)
-          toast.success('Atención creada exitosamente')
+          toast.success(formData.es_bloqueo ? 'Bloque creado exitosamente' : 'Atención creada exitosamente')
         }
       }
       
       navigate('/agenda')
     } catch (error) {
-      toast.error(`Error al ${isEditing ? 'actualizar' : 'crear'} la atención`)
+      const rawMessage = error instanceof Error ? error.message : ''
+      toast.error(
+        rawMessage
+          ? `Error al ${isEditing ? 'actualizar' : 'crear'} la atención: ${rawMessage}`
+          : `Error al ${isEditing ? 'actualizar' : 'crear'} la atención`
+      )
       console.error('Error saving atencion:', error)
     } finally {
       setSaving(false)
@@ -259,12 +324,15 @@ const AtencionForm = () => {
   }
 
   const timeSlots = generateTimeSlots()
+  const isBloqueoMode = formData.es_bloqueo
+  const bloqueoLabel = getBloqueoLabel(formData.tipo_bloqueo)
+  const estadoBloqueoLabel = ESTADO_CITA_OPTIONS.find(option => option.value === formData.estado_cita)?.label || 'Confirmada'
 
   return (
     <div className="max-w-2xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">
-          {isEditing ? 'Editar Atención' : 'Nueva Atención'}
+          {isEditing ? 'Editar Registro' : 'Nuevo Registro'}
         </h1>
         <button
           onClick={() => navigate('/agenda')}
@@ -276,6 +344,56 @@ const AtencionForm = () => {
 
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label htmlFor="es_bloqueo" className="block text-sm font-medium text-gray-700 mb-2">
+              Tipo de registro
+            </label>
+            <select
+              id="es_bloqueo"
+              name="es_bloqueo"
+              value={formData.es_bloqueo ? 'true' : 'false'}
+              onChange={(e) => {
+                const isBloqueo = e.target.value === 'true'
+                setFormData(prev => ({
+                  ...prev,
+                  es_bloqueo: isBloqueo,
+                  paciente_id: isBloqueo ? '' : prev.paciente_id,
+                  tipo_atencion: isBloqueo ? getBloqueoLabel(prev.tipo_bloqueo) : prev.tipo_atencion,
+                  valor_cobrado: isBloqueo ? 0 : prev.valor_cobrado,
+                  pagado: isBloqueo ? true : prev.pagado,
+                  numero_boleta: isBloqueo ? '' : prev.numero_boleta,
+                  estado_cita: isBloqueo ? 'confirmada' : prev.estado_cita,
+                  recurrencia: 1
+                }))
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+            >
+              <option value="false">Atención clínica</option>
+              <option value="true">Bloque no clínico</option>
+            </select>
+          </div>
+
+          {isBloqueoMode && (
+            <div>
+              <label htmlFor="tipo_bloqueo" className="block text-sm font-medium text-gray-700 mb-2">
+                Tipo de bloqueo
+              </label>
+              <select
+                id="tipo_bloqueo"
+                name="tipo_bloqueo"
+                value={formData.tipo_bloqueo}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+              >
+                {BLOQUEO_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
             <label htmlFor="profesional_id" className="block text-sm font-medium text-gray-700 mb-2">
               Profesional *
@@ -301,59 +419,65 @@ const AtencionForm = () => {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="paciente_id" className="block text-sm font-medium text-gray-700 mb-2">
-              Paciente *
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                value={pacienteSearch}
-                onChange={(e) => {
-                  setPacienteSearch(e.target.value)
-                  setShowPacienteOptions(true)
-                  if (e.target.value === '') {
-                     setFormData(prev => ({ ...prev, paciente_id: '' }))
-                  }
-                }}
-                onFocus={() => setShowPacienteOptions(true)}
-                onBlur={() => setTimeout(() => setShowPacienteOptions(false), 200)}
-                placeholder="Buscar por nombre o RUT..."
-                className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-                autoComplete="off"
-              />
-              
-              {showPacienteOptions && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                  {pacientes.filter(p => 
-                    p.nombre.toLowerCase().includes(pacienteSearch.toLowerCase()) || 
-                    p.rut.toLowerCase().includes(pacienteSearch.toLowerCase())
-                  ).length > 0 ? (
-                    pacientes.filter(p => 
+          {!isBloqueoMode ? (
+            <div>
+              <label htmlFor="paciente_id" className="block text-sm font-medium text-gray-700 mb-2">
+                Paciente *
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={pacienteSearch}
+                  onChange={(e) => {
+                    setPacienteSearch(e.target.value)
+                    setShowPacienteOptions(true)
+                    if (e.target.value === '') {
+                       setFormData(prev => ({ ...prev, paciente_id: '' }))
+                    }
+                  }}
+                  onFocus={() => setShowPacienteOptions(true)}
+                  onBlur={() => setTimeout(() => setShowPacienteOptions(false), 200)}
+                  placeholder="Buscar por nombre o RUT..."
+                  className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+                  autoComplete="off"
+                />
+                
+                {showPacienteOptions && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                    {pacientes.filter(p => 
                       p.nombre.toLowerCase().includes(pacienteSearch.toLowerCase()) || 
                       p.rut.toLowerCase().includes(pacienteSearch.toLowerCase())
-                    ).map(paciente => (
-                      <div
-                        key={paciente.id}
-                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                        onClick={() => {
-                          setFormData(prev => ({ ...prev, paciente_id: paciente.id }))
-                          setPacienteSearch(paciente.nombre)
-                          setShowPacienteOptions(false)
-                        }}
-                      >
-                        <div className="font-medium">{paciente.nombre}</div>
-                        <div className="text-gray-500 text-xs">RUT: {paciente.rut}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-4 py-2 text-gray-500 text-sm">No se encontraron pacientes</div>
-                  )}
-                </div>
-              )}
+                    ).length > 0 ? (
+                      pacientes.filter(p => 
+                        p.nombre.toLowerCase().includes(pacienteSearch.toLowerCase()) || 
+                        p.rut.toLowerCase().includes(pacienteSearch.toLowerCase())
+                      ).map(paciente => (
+                        <div
+                          key={paciente.id}
+                          className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, paciente_id: paciente.id }))
+                            setPacienteSearch(paciente.nombre)
+                            setShowPacienteOptions(false)
+                          }}
+                        >
+                          <div className="font-medium">{paciente.nombre}</div>
+                          <div className="text-gray-500 text-xs">RUT: {paciente.rut}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-gray-500 text-sm">No se encontraron pacientes</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="border border-orange-200 bg-orange-50 rounded-lg p-4 text-sm text-orange-800">
+              Este registro bloqueará el horario sin asociarlo a un paciente.
+            </div>
+          )}
 
           <div>
             <label htmlFor="fecha" className="block text-sm font-medium text-gray-700 mb-2">
@@ -400,28 +524,42 @@ const AtencionForm = () => {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="tipo_atencion" className="block text-sm font-medium text-gray-700 mb-2">
-              Tipo de Atención *
-            </label>
-            <select
-              id="tipo_atencion"
-              name="tipo_atencion"
-              value={formData.tipo_atencion}
-              onChange={(e) => handleTipoAtencionChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-              required
-            >
-              <option value="">Seleccione un tipo</option>
-              {tiposAtencion.map(tipo => (
-                <option key={tipo.id} value={tipo.id}>
-                  {tipo.nombre} {esProfesionalEnRengo ? '' : `- $${tipo.valor_base}`}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!isBloqueoMode ? (
+            <div>
+              <label htmlFor="tipo_atencion" className="block text-sm font-medium text-gray-700 mb-2">
+                Tipo de Atención *
+              </label>
+              <select
+                id="tipo_atencion"
+                name="tipo_atencion"
+                value={formData.tipo_atencion}
+                onChange={(e) => handleTipoAtencionChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+                required={!isBloqueoMode}
+              >
+                <option value="">Seleccione un tipo</option>
+                {tiposAtencion.map(tipo => (
+                  <option key={tipo.id} value={tipo.id}>
+                    {tipo.nombre} {esProfesionalEnRengo ? '' : `- $${tipo.valor_base}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Etiqueta del bloqueo
+              </label>
+              <input
+                type="text"
+                value={bloqueoLabel}
+                readOnly
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700"
+              />
+            </div>
+          )}
 
-          {!esProfesionalEnRengo && (
+          {!esProfesionalEnRengo && !isBloqueoMode && (
             <div>
               <label htmlFor="valor_cobrado" className="block text-sm font-medium text-gray-700 mb-2">
                 Valor Cobrado *
@@ -437,9 +575,23 @@ const AtencionForm = () => {
                   min="0"
                   step="0.01"
                   className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-                  required
+                  required={!isBloqueoMode}
                 />
               </div>
+            </div>
+          )}
+
+          {isBloqueoMode && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Estado del bloqueo
+              </label>
+              <input
+                type="text"
+                value={estadoBloqueoLabel}
+                readOnly
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700"
+              />
             </div>
           )}
         </div>
@@ -455,29 +607,31 @@ const AtencionForm = () => {
             value={formData.observaciones}
             onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-            placeholder="Notas sobre la atención..."
+            placeholder={isBloqueoMode ? 'Ej: reunión de equipo, licencia médica, almuerzo...' : 'Notas sobre la atención...'}
           />
         </div>
 
-        <div>
-          <label htmlFor="numero_boleta" className="block text-sm font-medium text-gray-700 mb-2">
-            Número de Boleta (Opcional)
-          </label>
-          <div className="relative">
-            <FileText className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              id="numero_boleta"
-              name="numero_boleta"
-              value={formData.numero_boleta}
-              onChange={handleChange}
-              className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-              placeholder="Ingrese el número de boleta"
-            />
+        {!isBloqueoMode && (
+          <div>
+            <label htmlFor="numero_boleta" className="block text-sm font-medium text-gray-700 mb-2">
+              Número de Boleta (Opcional)
+            </label>
+            <div className="relative">
+              <FileText className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                id="numero_boleta"
+                name="numero_boleta"
+                value={formData.numero_boleta}
+                onChange={handleChange}
+                className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+                placeholder="Ingrese el número de boleta"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
-        {!esProfesionalEnRengo && (
+        {!esProfesionalEnRengo && !isBloqueoMode && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex flex-col justify-center">
               <div className="flex items-center">

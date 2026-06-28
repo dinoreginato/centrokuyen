@@ -34,13 +34,16 @@ export interface Paciente {
 export interface Atencion {
   id: string
   profesional_id: string
-  paciente_id: string
+  paciente_id: string | null
   fecha: string
   hora: string
   tipo_atencion: string
   valor_cobrado: number
   pagado: boolean
+  estado_cita?: 'por_confirmar' | 'confirmada' | 'cancelada' | 'reagendada'
   estado_asistencia?: 'pendiente' | 'asistio' | 'no_asistio' // Nuevo campo
+  es_bloqueo?: boolean
+  tipo_bloqueo?: 'almuerzo' | 'reunion' | 'vacaciones' | 'licencia' | 'capacitacion' | 'otro' | null
   numero_boleta?: string // Nuevo campo para número de boleta
   observaciones: string
   activo?: boolean
