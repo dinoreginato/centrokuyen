@@ -37,16 +37,16 @@ export type TipoBloqueo = 'almuerzo' | 'reunion' | 'vacaciones' | 'licencia' | '
 export interface Atencion {
   id: string
   profesional_id: string
-  paciente_id?: string | null
+  paciente_id: string | null
   fecha: string
   hora: string
   tipo_atencion: string
   valor_cobrado: number
   pagado: boolean
   estado_cita?: EstadoCita
+  estado_asistencia?: 'pendiente' | 'asistio' | 'no_asistio' // Nuevo campo
   es_bloqueo?: boolean
   tipo_bloqueo?: TipoBloqueo | null
-  estado_asistencia?: 'pendiente' | 'asistio' | 'no_asistio' // Nuevo campo
   numero_boleta?: string // Nuevo campo para número de boleta
   observaciones: string
   activo?: boolean
@@ -114,7 +114,7 @@ export interface ProfesionalDisponibilidad {
   hora_fin: string
   created_at: string
   updated_at: string
-  
+
   profesional?: Profesional
 }
 
