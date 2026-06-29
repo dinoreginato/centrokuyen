@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { atencionesService } from '@/utils/supabase'
 import { Atencion, Paciente } from '@/types/database'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { toast } from 'sonner'
-import { CheckCircle2, Calendar, User, DollarSign, ChevronDown, ChevronUp, AlertCircle, MessageCircle } from 'lucide-react'
+import { CheckCircle2, Calendar, User, DollarSign, ChevronDown, ChevronUp, AlertCircle, MessageCircle, Search } from 'lucide-react'
 import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { formatCLP } from '@/utils/currency'
@@ -26,6 +26,8 @@ const PagosPendientes = () => {
   const [loading, setLoading] = useState(true)
   const [expandedMes, setExpandedMes] = useState<string | null>(null)
   const [expandedPaciente, setExpandedPaciente] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showOnlyOverdue, setShowOnlyOverdue] = useState(false)
   const { currentSucursal } = useSucursal()
 
   const normalizePhoneCL = (raw: string) => {
@@ -47,6 +49,17 @@ const PagosPendientes = () => {
     const atencionDate = parseISO(atencion.fecha)
     if (Number.isNaN(atencionDate.getTime())) return false
     return differenceInCalendarDays(new Date(), atencionDate) >= 3
+  }
+
+  const isValidPendingPayment = (atencion: Atencion) => {
+    const estadoCita = atencion.estado_cita || 'por_confirmar'
+
+    if (atencion.es_bloqueo) return false
+    if (atencion.pagado) return false
+    if (estadoCita === 'cancelada' || estadoCita === 'reagendada') return false
+    if ((atencion.valor_cobrado || 0) <= 1) return false
+
+    return true
   }
 
   const getWhatsAppReminderLink = (paciente: PacienteConDeuda) => {
@@ -81,9 +94,10 @@ const PagosPendientes = () => {
     try {
       setLoading(true)
       const data = await atencionesService.getPendientes(currentSucursal?.id)
+      const filteredData = data.filter(isValidPendingPayment)
       
       // Agrupar atenciones por mes y luego por paciente
-      const agrupadosPorMes = data.reduce((acc, atencion) => {
+      const agrupadosPorMes = filteredData.reduce((acc, atencion) => {
         if (!atencion.paciente) return acc
         
         // Obtener el mes y año de la atención
@@ -153,6 +167,57 @@ const PagosPendientes = () => {
     loadPendientes()
   }, [currentSucursal])
 
+  const mesesFiltrados = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+
+    return mesesDeuda
+      .map((mesGroup) => {
+        const pacientes = mesGroup.pacientes
+          .map((paciente) => {
+            const atencionesPendientes = paciente.atenciones_pendientes.filter((atencion) => {
+              const matchesSearch =
+                normalizedSearch.length === 0 ||
+                paciente.nombre.toLowerCase().includes(normalizedSearch) ||
+                (paciente.rut || '').toLowerCase().includes(normalizedSearch) ||
+                (paciente.telefono || '').toLowerCase().includes(normalizedSearch) ||
+                (atencion.profesional?.nombre || '').toLowerCase().includes(normalizedSearch) ||
+                (atencion.tipos_atencion?.nombre || atencion.tipo_atencion || '').toLowerCase().includes(normalizedSearch)
+
+              const matchesOverdue = !showOnlyOverdue || isOverdue(atencion)
+
+              return matchesSearch && matchesOverdue
+            })
+
+            if (atencionesPendientes.length === 0) return null
+
+            return {
+              ...paciente,
+              atenciones_pendientes: atencionesPendientes,
+              total_deuda: atencionesPendientes.reduce((sum, atencion) => sum + (atencion.valor_cobrado || 0), 0)
+            }
+          })
+          .filter((paciente): paciente is PacienteConDeuda => paciente !== null)
+          .sort((a, b) => a.nombre.localeCompare(b.nombre))
+
+        if (pacientes.length === 0) return null
+
+        return {
+          ...mesGroup,
+          pacientes,
+          total_deuda: pacientes.reduce((sum, paciente) => sum + paciente.total_deuda, 0)
+        }
+      })
+      .filter((mes): mes is MesConDeuda => mes !== null)
+  }, [mesesDeuda, searchTerm, showOnlyOverdue])
+
+  const totalDeudaFiltrada = useMemo(() => {
+    return mesesFiltrados.reduce((sum, mes) => sum + mes.total_deuda, 0)
+  }, [mesesFiltrados])
+
+  const totalPacientesFiltrados = useMemo(() => {
+    return mesesFiltrados.reduce((sum, mes) => sum + mes.pacientes.length, 0)
+  }, [mesesFiltrados])
+
   const toggleExpandMes = (claveMes: string) => {
     setExpandedMes(expandedMes === claveMes ? null : claveMes)
   }
@@ -210,20 +275,52 @@ const PagosPendientes = () => {
         <div className="bg-orange-100 text-orange-800 px-4 py-2 rounded-lg font-semibold flex items-center shadow-sm">
           <AlertCircle className="w-5 h-5 mr-2" />
           Total Deuda Global: {formatCLP(
-            mesesDeuda.reduce((sum, mes) => sum + mes.total_deuda, 0)
+            totalDeudaFiltrada
           )}
         </div>
       </div>
 
-      {mesesDeuda.length === 0 ? (
+      <div className="bg-white rounded-lg shadow-md p-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto_auto] gap-4 items-center">
+          <div className="relative">
+            <Search className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por paciente, RUT, teléfono, profesional o tipo de atención"
+              className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-medical-blue focus:border-medical-blue"
+            />
+          </div>
+
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={showOnlyOverdue}
+              onChange={(e) => setShowOnlyOverdue(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-medical-blue focus:ring-medical-blue"
+            />
+            Solo atrasadas
+          </label>
+
+          <div className="text-sm text-gray-600">
+            {totalPacientesFiltrados} paciente(s)
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-gray-500">
+          Esta vista excluye citas canceladas, reagendadas, bloques no clínicos y montos menores o iguales a $1.
+        </p>
+      </div>
+
+      {mesesFiltrados.length === 0 ? (
         <div className="bg-white rounded-lg shadow-md p-10 text-center">
           <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">¡Todo al día!</h2>
-          <p className="text-gray-600">No hay pagos pendientes registrados en el sistema.</p>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Sin resultados pendientes</h2>
+          <p className="text-gray-600">No hay registros pendientes con los filtros actuales.</p>
         </div>
       ) : (
         <div className="space-y-6">
-          {mesesDeuda.map((mesGroup) => (
+          {mesesFiltrados.map((mesGroup) => (
             <div key={mesGroup.clave} className="bg-white rounded-lg shadow-md overflow-hidden">
               <div 
                 className="bg-medical-blue text-white p-4 cursor-pointer flex justify-between items-center transition-colors hover:bg-blue-700"
