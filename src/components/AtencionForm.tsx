@@ -208,8 +208,8 @@ const AtencionForm = () => {
       return
     }
 
-    if (!formData.es_bloqueo && formData.valor_cobrado <= 0) {
-      toast.error('El valor cobrado debe ser mayor a 0')
+    if (!formData.es_bloqueo && formData.valor_cobrado < 0) {
+      toast.error('El valor cobrado no puede ser negativo')
       return
     }
 

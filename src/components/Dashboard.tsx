@@ -10,6 +10,7 @@ import { es } from 'date-fns/locale'
 import DashboardCharts from './DashboardCharts'
 import { autoNotificationService, notificationService } from '@/utils/notifications'
 import { formatCLP } from '@/utils/currency'
+import { isActiveClinicalAtencion, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 interface DashboardStatCardProps {
   title: string
@@ -166,9 +167,9 @@ const Dashboard = () => {
         return atencionDate >= startOfCurrentMonth && atencionDate <= endOfCurrentMonth
       })
 
-      const atencionesMesClinicas = atencionesMes.filter(a => !a.es_bloqueo)
-      const atencionesMesActivas = atencionesMesClinicas.filter(a => a.estado_cita !== 'cancelada')
-      const citasCanceladasMes = atencionesMesClinicas.filter(a => a.estado_cita === 'cancelada').length
+      const atencionesMesActivas = atencionesMes.filter(isActiveClinicalAtencion)
+      const atencionesMesFacturables = atencionesMesActivas.filter(isBillableAtencion)
+      const citasCanceladasMes = atencionesMes.filter(a => !a.es_bloqueo && a.estado_cita === 'cancelada').length
 
       // 4. Ingresos Este Mes / Mis Ganancias (SOLO PAGADAS)
       let ingresosMes = 0
@@ -182,12 +183,12 @@ const Dashboard = () => {
       let margenMes = 0
 
       // Filtramos solo las pagadas para el cálculo de dinero
-      const atencionesPagadasMes = atencionesMesActivas.filter(a => a.pagado)
-      const atencionesPendientesMesList = atencionesMesActivas.filter(a => !a.pagado)
+      const atencionesPagadasMes = atencionesMesFacturables.filter(a => a.pagado)
+      const atencionesPendientesMesList = atencionesMesFacturables.filter(a => !a.pagado)
 
-      ingresosPendientesMes = atencionesPendientesMesList.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
-      ingresosProyectadosMes = atencionesMesActivas.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
-      ingresosCobradosMes = atencionesPagadasMes.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
+      ingresosPendientesMes = sumFinancialAmounts(atencionesPendientesMesList)
+      ingresosProyectadosMes = sumFinancialAmounts(atencionesMesFacturables)
+      ingresosCobradosMes = sumFinancialAmounts(atencionesPagadasMes)
 
       if (isProfesional && user?.profesional_id) {
         const pid = user.profesional_id
@@ -221,7 +222,7 @@ const Dashboard = () => {
 
       // 5. Atenciones Pendientes (filtered)
       const atencionesPendientes = filteredAtenciones.filter(
-        a => !a.es_bloqueo && a.estado_cita !== 'cancelada' && !a.pagado && a.estado_asistencia !== 'no_asistio'
+        a => isBillableAtencion(a) && !a.pagado && a.estado_asistencia !== 'no_asistio'
       ).length
 
       // 6. Próximas Atenciones (filtered)

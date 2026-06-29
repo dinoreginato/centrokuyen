@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 export { supabase }
 import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, CentroConfig, Usuario, Sucursal, ProfesionalComision, ProfesionalDisponibilidad } from '@/types/database'
+import { isActiveClinicalAtencion, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 // Helper for audit logging
 export const auditService = {
@@ -564,8 +565,8 @@ export const reportesService = {
     // Obtener atenciones del mes
     const atenciones = await atencionesService.getByDateRange(startDate, endDate, sucursalId)
     
-    const atencionesClinicas = atenciones.filter(a => !a.es_bloqueo)
-    const atencionesActivas = atencionesClinicas.filter(a => a.estado_cita !== 'cancelada')
+    const atencionesActivas = atenciones.filter(isActiveClinicalAtencion)
+    const atencionesFacturables = atencionesActivas.filter(isBillableAtencion)
 
     // Obtener costos del mes
     const costos = await costosService.getByDateRange(startDate, endDate, sucursalId)
@@ -582,13 +583,13 @@ export const reportesService = {
       .filter(c => c.tipo === 'variable')
       .reduce((sum, c) => sum + c.monto, 0)
 
-    const ingresosTotales = atencionesActivas.reduce((sum, a) => sum + a.valor_cobrado, 0)
-    const ingresosCobrados = atencionesActivas
+    const ingresosTotales = sumFinancialAmounts(atencionesFacturables)
+    const ingresosCobrados = atencionesFacturables
       .filter(a => a.pagado)
       .reduce((sum, a) => sum + a.valor_cobrado, 0)
 
     // Calcular pagos a profesionales considerando excepciones
-    const totalPagadoProfesionales = atencionesActivas.reduce((sum, a) => {
+    const totalPagadoProfesionales = atencionesFacturables.reduce((sum, a) => {
       if (a.profesional) {
         // Buscar regla específica para este profesional y tipo de atención
         const comisionEspecifica = comisiones.find(c => 

@@ -10,6 +10,7 @@ import { atencionesService, profesionalesService } from '@/utils/supabase'
 import { formatCLP } from '@/utils/currency'
 import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { getBloqueoBadgeClass, getBloqueoLabel } from '@/utils/bloqueos'
+import { isActiveClinicalAtencion, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 const CajaDiaria = () => {
   const { user } = useAuth()
@@ -67,8 +68,12 @@ const CajaDiaria = () => {
   }, [atencionesFiltradas])
 
   const atencionesActivas = useMemo(() => {
-    return atencionesClinicas.filter(a => a.estado_cita !== 'cancelada')
+    return atencionesClinicas.filter(isActiveClinicalAtencion)
   }, [atencionesClinicas])
+
+  const atencionesFacturables = useMemo(() => {
+    return atencionesActivas.filter(isBillableAtencion)
+  }, [atencionesActivas])
 
   const bloqueos = useMemo(() => {
     return atencionesFiltradas.filter(a => a.es_bloqueo)
@@ -77,23 +82,23 @@ const CajaDiaria = () => {
   const resumen = useMemo(() => {
     const cobrado = atencionesActivas
       .filter(a => a.pagado)
-      .reduce((sum, a) => sum + a.valor_cobrado, 0)
+      .filter(isBillableAtencion)
 
     const pendiente = atencionesActivas
       .filter(a => !a.pagado)
-      .reduce((sum, a) => sum + a.valor_cobrado, 0)
+      .filter(isBillableAtencion)
 
-    const proyectado = atencionesActivas.reduce((sum, a) => sum + a.valor_cobrado, 0)
+    const proyectado = sumFinancialAmounts(atencionesFacturables)
 
     return {
       totalAtenciones: atencionesClinicas.length,
       activas: atencionesActivas.length,
-      cobrado,
-      pendiente,
+      cobrado: sumFinancialAmounts(cobrado),
+      pendiente: sumFinancialAmounts(pendiente),
       proyectado,
       bloqueos: bloqueos.length
     }
-  }, [atencionesClinicas, atencionesActivas, bloqueos])
+  }, [atencionesClinicas, atencionesActivas, atencionesFacturables, bloqueos])
 
   const resumenPorProfesional = useMemo(() => {
     const grouped = new Map<string, {
@@ -113,8 +118,10 @@ const CajaDiaria = () => {
       }
 
       current.atenciones += 1
-      if (atencion.pagado) current.cobrado += atencion.valor_cobrado
-      else current.pendiente += atencion.valor_cobrado
+      if (isBillableAtencion(atencion)) {
+        if (atencion.pagado) current.cobrado += atencion.valor_cobrado
+        else current.pendiente += atencion.valor_cobrado
+      }
 
       grouped.set(key, current)
     })
