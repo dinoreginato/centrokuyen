@@ -7,6 +7,7 @@ import { format as dateFormat, subMonths, startOfMonth, endOfMonth } from 'date-
 import { es } from 'date-fns/locale'
 import { formatCLP } from '@/utils/currency'
 import { Atencion } from '@/types/database'
+import { isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 interface ChartData {
   month: string
@@ -61,7 +62,7 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
   }
 
   const getFinancialAtenciones = (items: Atencion[]) => {
-    return items.filter(a => !a.es_bloqueo && a.estado_cita !== 'cancelada')
+    return items.filter(isBillableAtencion)
   }
 
   const loadMonthlyData = async (): Promise<ChartData[]> => {
@@ -79,7 +80,7 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
       const filtered = profesionalId ? atenciones.filter(a => a.profesional_id === profesionalId) : atenciones
       const active = getFinancialAtenciones(filtered)
       
-      const ingresos = active.filter(a => a.pagado).reduce((sum, a) => sum + a.valor_cobrado, 0)
+      const ingresos = sumFinancialAmounts(active.filter(a => a.pagado))
       
       data.push({
         month: dateFormat(date, 'MMM yyyy', { locale: es }),
@@ -101,7 +102,7 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
     
     const data = profesionales.map(profesional => {
       const atencionesProf = atenciones.filter(a => a.profesional_id === profesional.id)
-      const ingresos = atencionesProf.filter(a => a.pagado).reduce((sum, a) => sum + a.valor_cobrado, 0)
+      const ingresos = sumFinancialAmounts(atencionesProf.filter(a => a.pagado))
       
       return {
         name: profesional.nombre.split(' ')[0], // Primer nombre

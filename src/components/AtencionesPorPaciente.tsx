@@ -10,6 +10,7 @@ import { Atencion, EstadoCita, Paciente } from '@/types/database'
 import { atencionesService, pacientesService } from '@/utils/supabase'
 import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { formatCLP } from '@/utils/currency'
+import { getFinancialAmount, isBillableAtencion } from '@/utils/financial'
 
 const AtencionesPorPaciente = () => {
   const { user } = useAuth()
@@ -101,9 +102,9 @@ const AtencionesPorPaciente = () => {
 
   const resumenPaciente = useMemo(() => {
     const totalAtenciones = atenciones.length
-    const totalPagado = atenciones.filter(a => a.pagado).reduce((sum, a) => sum + a.valor_cobrado, 0)
-    const totalPendiente = atenciones.filter(a => !a.pagado).reduce((sum, a) => sum + a.valor_cobrado, 0)
-    const pendientes = atenciones.filter(a => !a.pagado).length
+    const totalPagado = atenciones.filter(a => a.pagado).reduce((sum, a) => sum + getFinancialAmount(a), 0)
+    const totalPendiente = atenciones.filter(a => !a.pagado).reduce((sum, a) => sum + getFinancialAmount(a), 0)
+    const pendientes = atenciones.filter(a => !a.pagado && isBillableAtencion(a)).length
     const ultimaAtencion = atenciones.length > 0 ? atenciones[0] : null
 
     return {
