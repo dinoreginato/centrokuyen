@@ -83,6 +83,7 @@ const Dashboard = () => {
     utilidadMes: 0,
     margenMes: 0,
     citasCanceladasMes: 0,
+    gananciasAcumuladas: 0,
     atencionesPendientes: 0,
     proximasAtenciones: [] as any[]
   })
@@ -136,6 +137,9 @@ const Dashboard = () => {
 
       // Determine filters based on role
       const isProfesional = user?.rol === 'profesional' && user.profesional_id
+      const esProfesionalEnRengoActual = Boolean(
+        isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
+      )
       
       let filteredAtenciones = atenciones
       if (isProfesional) {
@@ -181,10 +185,14 @@ const Dashboard = () => {
       let costosMes = 0
       let utilidadMes = 0
       let margenMes = 0
+      let gananciasAcumuladas = 0
 
       // Filtramos solo las pagadas para el cálculo de dinero
       const atencionesPagadasMes = atencionesMesFacturables.filter(a => a.pagado)
       const atencionesPendientesMesList = atencionesMesFacturables.filter(a => !a.pagado)
+      const atencionesPagadasHistoricas = filteredAtenciones.filter(
+        a => a.pagado && isBillableAtencion(a)
+      )
 
       ingresosPendientesMes = sumFinancialAmounts(atencionesPendientesMesList)
       ingresosProyectadosMes = sumFinancialAmounts(atencionesMesFacturables)
@@ -195,14 +203,21 @@ const Dashboard = () => {
         const profesionalActual = profesionales.find(p => p.id === pid)
         if (profesionalActual) {
           const comisiones = await profesionalComisionesService.getAll(pid)
-          
-          ingresosMes = atencionesPagadasMes.reduce((total, atencion) => {
+
+          const calcularGananciaProfesional = (atencionesPagadas: typeof filteredAtenciones) => {
+            return atencionesPagadas.reduce((total, atencion) => {
             const comisionEspecifica = comisiones.find(c => c.tipo_atencion_id === atencion.tipo_atencion)
             const porcentaje = comisionEspecifica?.porcentaje ?? profesionalActual.porcentaje_pago ?? 0
             const montoFijo = comisionEspecifica?.monto_fijo ?? profesionalActual.monto_fijo_pago ?? 0
             const pagoPorcentaje = (atencion.valor_cobrado * porcentaje) / 100
             return total + pagoPorcentaje + montoFijo
-          }, 0)
+            }, 0)
+          }
+
+          ingresosMes = calcularGananciaProfesional(atencionesPagadasMes)
+          gananciasAcumuladas = esProfesionalEnRengoActual
+            ? calcularGananciaProfesional(atencionesPagadasHistoricas)
+            : ingresosMes
         }
         utilidadMes = ingresosMes
         margenMes = ingresosProyectadosMes > 0 ? (ingresosMes / ingresosProyectadosMes) * 100 : 0
@@ -218,6 +233,7 @@ const Dashboard = () => {
         costosMes = pagosProfesionalesMes + costosOperativosMes
         utilidadMes = ingresosMes - costosMes
         margenMes = ingresosMes > 0 ? (utilidadMes / ingresosMes) * 100 : 0
+        gananciasAcumuladas = ingresosMes
       }
 
       // 5. Atenciones Pendientes (filtered)
@@ -251,6 +267,7 @@ const Dashboard = () => {
         utilidadMes,
         margenMes,
         citasCanceladasMes,
+        gananciasAcumuladas,
         atencionesPendientes,
         proximasAtenciones
       })
@@ -274,6 +291,11 @@ const Dashboard = () => {
   const esProfesionalEnRengo = isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
   const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
   const canManagePacientes = !isProfesional || (isProfesional && isDalcahue)
+  const professionalIncomeTitle = esProfesionalEnRengo ? 'Mis Ganancias Acumuladas' : 'Mis Ganancias Cobradas'
+  const professionalIncomeValue = esProfesionalEnRengo ? stats.gananciasAcumuladas : stats.ingresosMes
+  const professionalIncomeSubtitle = esProfesionalEnRengo
+    ? 'Total cobrado como profesional'
+    : undefined
 
   return (
     <div className="space-y-6">
@@ -321,17 +343,18 @@ const Dashboard = () => {
         />
 
         <DashboardStatCard
-          title={isProfesional ? 'Mis Ganancias Cobradas' : 'Ingresos del Mes'}
-          value={formatCLP(stats.ingresosMes)}
+          title={isProfesional ? professionalIncomeTitle : 'Ingresos del Mes'}
+          value={formatCLP(isProfesional ? professionalIncomeValue : stats.ingresosMes)}
           icon={DollarSign}
           iconClassName="bg-purple-600 text-white"
           valueClassName="text-purple-600"
-          subtitle={!isProfesional ? `Cobrado: ${formatCLP(stats.ingresosCobradosMes)}` : undefined}
+          subtitle={isProfesional ? professionalIncomeSubtitle : `Cobrado: ${formatCLP(stats.ingresosCobradosMes)}`}
         />
       </div>
 
-      <div className={`grid grid-cols-1 gap-5 items-stretch md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-4' : 'xl:grid-cols-3 2xl:grid-cols-4'}`}>
-        {isProfesional ? (
+      {!esProfesionalEnRengo && (
+        <div className={`grid grid-cols-1 gap-5 items-stretch md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-4' : 'xl:grid-cols-3 2xl:grid-cols-4'}`}>
+          {isProfesional ? (
           <>
             <DashboardStatCard
               title="Por Cobrar"
@@ -410,8 +433,9 @@ const Dashboard = () => {
               subtitle={`Canceladas: ${stats.citasCanceladasMes}`}
             />
           </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
       
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
         <div className="mb-5 flex items-center justify-between gap-3">
@@ -555,7 +579,7 @@ const Dashboard = () => {
         </div>
 
         <div className="space-y-4">
-          {stats.atencionesPendientes > 0 && (
+          {!esProfesionalEnRengo && stats.atencionesPendientes > 0 && (
             <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 flex-shrink-0 rounded-full bg-yellow-100 p-2">
