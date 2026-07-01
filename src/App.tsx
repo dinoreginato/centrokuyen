@@ -114,7 +114,7 @@ const AppContent = () => {
             <Route path="/agenda/:id" element={<AtencionForm />} />
             <Route path="/atenciones-por-paciente" element={<StaffRoute><AtencionesPorPaciente /></StaffRoute>} />
             <Route path="/disponibilidad" element={<StaffRoute><Disponibilidad /></StaffRoute>} />
-            <Route path="/caja-diaria" element={<StaffRoute><CajaDiaria /></StaffRoute>} />
+            <Route path="/caja-diaria" element={<AdminRoute><CajaDiaria /></AdminRoute>} />
           </Routes>
         </main>
       </div>

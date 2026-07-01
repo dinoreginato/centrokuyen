@@ -50,7 +50,7 @@ const Navigation = () => {
     { path: '/agenda', icon: Calendar, label: 'Agenda', roles: ['admin', 'profesional', 'usuario'] },
     { path: '/atenciones-por-paciente', icon: Search, label: 'Atenciones', roles: ['admin', 'profesional'] },
     { path: '/disponibilidad', icon: Clock, label: 'Disponibilidad', roles: ['admin', 'profesional'] },
-    { path: '/caja-diaria', icon: Wallet, label: 'Caja Diaria', roles: ['admin', 'profesional'] },
+    { path: '/caja-diaria', icon: Wallet, label: 'Caja Diaria', roles: ['admin'] },
     { path: '/pagos-pendientes', icon: CreditCard, label: 'Pagos Pendientes', roles: ['admin'] },
     { path: '/reportes', icon: FileText, label: 'Reportes', roles: ['admin'] },
     { path: '/costos', icon: DollarSign, label: 'Costos', roles: ['admin'] },
