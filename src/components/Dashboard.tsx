@@ -73,6 +73,7 @@ const Dashboard = () => {
     totalPacientes: 0,
     totalAtencionesMes: 0,
     ingresosMes: 0,
+    gananciasAcumuladas: 0,
     atencionesPendientes: 0,
     proximasAtenciones: [] as any[]
   })
@@ -125,6 +126,9 @@ const Dashboard = () => {
 
       // Determine filters based on role
       const isProfesional = user?.rol === 'profesional' && user.profesional_id
+      const esProfesionalEnRengoActual = Boolean(
+        isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
+      )
       
       let filteredAtenciones = atenciones
       if (isProfesional) {
@@ -158,27 +162,37 @@ const Dashboard = () => {
 
       // 4. Ingresos Este Mes / Mis Ganancias (SOLO PAGADAS)
       let ingresosMes = 0
+      let gananciasAcumuladas = 0
 
       // Filtramos solo las pagadas para el cálculo de dinero
       const atencionesPagadasMes = atencionesMes.filter(a => a.pagado)
+      const atencionesPagadasHistoricas = filteredAtenciones.filter(a => a.pagado)
 
       if (isProfesional && user?.profesional_id) {
         const pid = user.profesional_id
         const profesionalActual = profesionales.find(p => p.id === pid)
         if (profesionalActual) {
           const comisiones = await profesionalComisionesService.getAll(pid)
-          
-          ingresosMes = atencionesPagadasMes.reduce((total, atencion) => {
+
+          const calcularGananciaProfesional = (atencionesPagadas: typeof filteredAtenciones) => {
+            return atencionesPagadas.reduce((total, atencion) => {
             const comisionEspecifica = comisiones.find(c => c.tipo_atencion_id === atencion.tipo_atencion)
             const porcentaje = comisionEspecifica?.porcentaje ?? profesionalActual.porcentaje_pago ?? 0
             const montoFijo = comisionEspecifica?.monto_fijo ?? profesionalActual.monto_fijo_pago ?? 0
             const pagoPorcentaje = (atencion.valor_cobrado * porcentaje) / 100
             return total + pagoPorcentaje + montoFijo
-          }, 0)
+            }, 0)
+          }
+
+          ingresosMes = calcularGananciaProfesional(atencionesPagadasMes)
+          gananciasAcumuladas = esProfesionalEnRengoActual
+            ? calcularGananciaProfesional(atencionesPagadasHistoricas)
+            : ingresosMes
         }
       } else {
         // Para admin, sumamos el total cobrado de las atenciones pagadas
         ingresosMes = atencionesPagadasMes.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
+        gananciasAcumuladas = ingresosMes
       }
 
       // 5. Atenciones Pendientes (filtered)
@@ -201,6 +215,7 @@ const Dashboard = () => {
         totalPacientes: metric2Value,
         totalAtencionesMes: atencionesMes.length,
         ingresosMes,
+        gananciasAcumuladas,
         atencionesPendientes,
         proximasAtenciones
       })
@@ -224,6 +239,11 @@ const Dashboard = () => {
   const esProfesionalEnRengo = isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
   const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
   const canManagePacientes = !isProfesional || (isProfesional && isDalcahue)
+  const professionalIncomeTitle = esProfesionalEnRengo ? 'Mis Ganancias Acumuladas' : 'Mis Ganancias'
+  const professionalIncomeValue = esProfesionalEnRengo ? stats.gananciasAcumuladas : stats.ingresosMes
+  const professionalIncomeSubtitle = esProfesionalEnRengo
+    ? 'Total cobrado como profesional'
+    : 'Total cobrado del mes'
 
   return (
     <div className="space-y-6">
@@ -271,12 +291,12 @@ const Dashboard = () => {
         />
 
         <DashboardStatCard
-          title={isProfesional ? 'Mis Ganancias' : 'Ingresos Este Mes'}
-          value={formatCLP(stats.ingresosMes)}
+          title={isProfesional ? professionalIncomeTitle : 'Ingresos Este Mes'}
+          value={formatCLP(isProfesional ? professionalIncomeValue : stats.ingresosMes)}
           icon={DollarSign}
           iconClassName="bg-purple-600 text-white"
           valueClassName="text-purple-600"
-          subtitle={isProfesional ? 'Total cobrado del mes' : 'Ingresos cobrados del mes'}
+          subtitle={isProfesional ? professionalIncomeSubtitle : 'Ingresos cobrados del mes'}
         />
       </div>
       
@@ -424,7 +444,7 @@ const Dashboard = () => {
         </div>
 
         <div className="space-y-4">
-          {stats.atencionesPendientes > 0 && (
+          {!esProfesionalEnRengo && stats.atencionesPendientes > 0 && (
             <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 flex-shrink-0 rounded-full bg-yellow-100 p-2">
