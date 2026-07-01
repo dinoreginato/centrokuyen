@@ -83,7 +83,6 @@ const Dashboard = () => {
     utilidadMes: 0,
     margenMes: 0,
     citasCanceladasMes: 0,
-    gananciasAcumuladas: 0,
     atencionesPendientes: 0,
     proximasAtenciones: [] as any[]
   })
@@ -137,9 +136,6 @@ const Dashboard = () => {
 
       // Determine filters based on role
       const isProfesional = user?.rol === 'profesional' && user.profesional_id
-      const esProfesionalEnRengoActual = Boolean(
-        isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
-      )
       
       let filteredAtenciones = atenciones
       if (isProfesional) {
@@ -185,14 +181,10 @@ const Dashboard = () => {
       let costosMes = 0
       let utilidadMes = 0
       let margenMes = 0
-      let gananciasAcumuladas = 0
 
       // Filtramos solo las pagadas para el cálculo de dinero
       const atencionesPagadasMes = atencionesMesFacturables.filter(a => a.pagado)
       const atencionesPendientesMesList = atencionesMesFacturables.filter(a => !a.pagado)
-      const atencionesPagadasHistoricas = filteredAtenciones.filter(
-        a => a.pagado && isBillableAtencion(a)
-      )
 
       ingresosPendientesMes = sumFinancialAmounts(atencionesPendientesMesList)
       ingresosProyectadosMes = sumFinancialAmounts(atencionesMesFacturables)
@@ -215,9 +207,6 @@ const Dashboard = () => {
           }
 
           ingresosMes = calcularGananciaProfesional(atencionesPagadasMes)
-          gananciasAcumuladas = esProfesionalEnRengoActual
-            ? calcularGananciaProfesional(atencionesPagadasHistoricas)
-            : ingresosMes
         }
         utilidadMes = ingresosMes
         margenMes = ingresosProyectadosMes > 0 ? (ingresosMes / ingresosProyectadosMes) * 100 : 0
@@ -233,7 +222,6 @@ const Dashboard = () => {
         costosMes = pagosProfesionalesMes + costosOperativosMes
         utilidadMes = ingresosMes - costosMes
         margenMes = ingresosMes > 0 ? (utilidadMes / ingresosMes) * 100 : 0
-        gananciasAcumuladas = ingresosMes
       }
 
       // 5. Atenciones Pendientes (filtered)
@@ -267,7 +255,6 @@ const Dashboard = () => {
         utilidadMes,
         margenMes,
         citasCanceladasMes,
-        gananciasAcumuladas,
         atencionesPendientes,
         proximasAtenciones
       })
@@ -291,10 +278,9 @@ const Dashboard = () => {
   const esProfesionalEnRengo = isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
   const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
   const canManagePacientes = !isProfesional || (isProfesional && isDalcahue)
-  const professionalIncomeTitle = esProfesionalEnRengo ? 'Mis Ganancias Acumuladas' : 'Mis Ganancias Cobradas'
-  const professionalIncomeValue = esProfesionalEnRengo ? stats.gananciasAcumuladas : stats.ingresosMes
+  const professionalIncomeTitle = esProfesionalEnRengo ? 'Mis Ganancias del Mes' : 'Mis Ganancias Cobradas'
   const professionalIncomeSubtitle = esProfesionalEnRengo
-    ? 'Total cobrado como profesional'
+    ? 'Total del mes seleccionado'
     : undefined
 
   return (
@@ -344,7 +330,7 @@ const Dashboard = () => {
 
         <DashboardStatCard
           title={isProfesional ? professionalIncomeTitle : 'Ingresos del Mes'}
-          value={formatCLP(isProfesional ? professionalIncomeValue : stats.ingresosMes)}
+          value={formatCLP(stats.ingresosMes)}
           icon={DollarSign}
           iconClassName="bg-purple-600 text-white"
           valueClassName="text-purple-600"
