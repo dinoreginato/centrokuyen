@@ -611,6 +611,40 @@ export const reportesService = {
 
 // Servicios para Centros
 export const centrosService = {
+  async getUsageSummary(id: string) {
+    const [
+      sucursales,
+      usuarios,
+      profesionales,
+      pacientes,
+      tiposAtencion,
+      atenciones,
+      costos
+    ] = await Promise.all([
+      supabase.from('sucursales').select('*', { count: 'exact', head: true }).eq('centro_id', id).eq('activo', true),
+      supabase.from('usuarios').select('*', { count: 'exact', head: true }).eq('centro_id', id),
+      supabase.from('profesionales').select('*', { count: 'exact', head: true }).eq('centro_id', id).eq('activo', true),
+      supabase.from('pacientes').select('*', { count: 'exact', head: true }).eq('centro_id', id).eq('activo', true),
+      supabase.from('tipos_atencion').select('*', { count: 'exact', head: true }).eq('centro_id', id).eq('activo', true),
+      supabase.from('atenciones').select('*', { count: 'exact', head: true }).eq('centro_id', id).eq('activo', true),
+      supabase.from('costos').select('*', { count: 'exact', head: true }).eq('centro_id', id).eq('activo', true)
+    ])
+
+    const results = { sucursales, usuarios, profesionales, pacientes, tiposAtencion, atenciones, costos }
+    const errors = Object.values(results).find(result => result.error)
+    if (errors?.error) throw errors.error
+
+    return {
+      sucursales: sucursales.count || 0,
+      usuarios: usuarios.count || 0,
+      profesionales: profesionales.count || 0,
+      pacientes: pacientes.count || 0,
+      tiposAtencion: tiposAtencion.count || 0,
+      atenciones: atenciones.count || 0,
+      costos: costos.count || 0,
+    }
+  },
+
   async getAll(): Promise<Centro[]> {
     const { data, error } = await supabase
       .from('centros')
@@ -657,6 +691,23 @@ export const centrosService = {
   },
 
   async delete(id: string): Promise<void> {
+    const usage = await this.getUsageSummary(id)
+    const totalDependencies = Object.values(usage).reduce((sum, count) => sum + count, 0)
+
+    if (totalDependencies > 0) {
+      const details = [
+        usage.sucursales > 0 ? `${usage.sucursales} sucursales` : null,
+        usage.usuarios > 0 ? `${usage.usuarios} usuarios` : null,
+        usage.profesionales > 0 ? `${usage.profesionales} profesionales` : null,
+        usage.pacientes > 0 ? `${usage.pacientes} pacientes` : null,
+        usage.tiposAtencion > 0 ? `${usage.tiposAtencion} tipos de atención` : null,
+        usage.atenciones > 0 ? `${usage.atenciones} atenciones` : null,
+        usage.costos > 0 ? `${usage.costos} costos` : null
+      ].filter(Boolean).join(', ')
+
+      throw new Error(`No se puede eliminar el centro porque todavía tiene datos asociados: ${details}.`)
+    }
+
     const { error } = await supabase
       .from('centros')
       .update({ activo: false })

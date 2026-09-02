@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Save, Building, Phone, CreditCard, Users, Plus, CheckCircle2 } from 'lucide-react'
+import { Save, Building, Phone, CreditCard, Users, Plus, CheckCircle2, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { centrosService } from '@/utils/supabase'
@@ -10,6 +10,7 @@ const Configuracion = () => {
   const { currentCentro, centros, setCentro } = useSucursal()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [creatingCentro, setCreatingCentro] = useState(false)
   const [formData, setFormData] = useState({
     nombre: '',
@@ -86,6 +87,46 @@ const Configuracion = () => {
     })
   }
 
+  const loadCurrentCentroIntoForm = () => {
+    if (!currentCentro) return
+
+    setFormData({
+      nombre: currentCentro.nombre || '',
+      direccion: currentCentro.direccion || '',
+      telefono: currentCentro.telefono || '',
+      cuit: currentCentro.cuit || '',
+      logo_url: currentCentro.logo_url || ''
+    })
+    setCreatingCentro(false)
+  }
+
+  const handleDeleteCentro = async () => {
+    if (!currentCentro) {
+      toast.error('Selecciona un centro para eliminar')
+      return
+    }
+
+    if (centros.length <= 1) {
+      toast.error('No puedes eliminar el único centro disponible')
+      return
+    }
+
+    const confirmed = confirm(`¿Seguro que deseas eliminar el centro "${currentCentro.nombre}"? Esta acción solo es posible si no tiene datos asociados.`)
+    if (!confirmed) return
+
+    try {
+      setDeleting(true)
+      await centrosService.delete(currentCentro.id)
+      toast.success('Centro eliminado exitosamente')
+      setTimeout(() => window.location.reload(), 600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo eliminar el centro'
+      toast.error(message)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -109,7 +150,7 @@ const Configuracion = () => {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-800">Centros disponibles</h2>
-            <p className="text-sm text-gray-500">Selecciona el centro que quieres editar o crea uno nuevo.</p>
+            <p className="text-sm text-gray-500">Selecciona un centro para editarlo, administrar sus sucursales o eliminarlo si no tiene datos asociados.</p>
           </div>
           <button
             type="button"
@@ -138,17 +179,60 @@ const Configuracion = () => {
                 <span className="font-medium">{centro.nombre}</span>
               </div>
               <p className="mt-1 text-xs text-gray-500">{centro.telefono || 'Sin teléfono'}</p>
+              <p className="mt-2 text-xs font-medium text-medical-blue">
+                {currentCentro?.id === centro.id && !creatingCentro ? 'Centro seleccionado para edición' : 'Haz clic para editar este centro'}
+              </p>
             </button>
           ))}
         </div>
+
+        {!creatingCentro && currentCentro && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Centro seleccionado</p>
+                <p className="text-sm text-slate-600">{currentCentro.nombre}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={loadCurrentCentroIntoForm}
+                  className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  <Pencil className="h-4 w-4" />
+                  <span>Editar Centro</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteCentro}
+                  disabled={deleting || saving || centros.length <= 1}
+                  className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>{deleting ? 'Eliminando...' : 'Eliminar Centro'}</span>
+                </button>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              Solo se puede eliminar un centro si no tiene sucursales, usuarios, profesionales, pacientes, atenciones, costos ni tipos de atención asociados.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center mb-4">
-          <Building className="h-6 w-6 text-medical-blue mr-2" />
-          <h2 className="text-lg font-semibold text-gray-800">
-            {creatingCentro ? 'Nuevo Centro' : 'Información General del Centro'}
-          </h2>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center">
+            <Building className="h-6 w-6 text-medical-blue mr-2" />
+            <h2 className="text-lg font-semibold text-gray-800">
+              {creatingCentro ? 'Nuevo Centro' : 'Editar Centro'}
+            </h2>
+          </div>
+          {!creatingCentro && currentCentro && (
+            <p className="text-sm text-gray-500">
+              Editando: <span className="font-medium text-gray-700">{currentCentro.nombre}</span>
+            </p>
+          )}
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -243,13 +327,7 @@ const Configuracion = () => {
               type="button"
               onClick={() => {
                 if (currentCentro) {
-                  setFormData({
-                    nombre: currentCentro.nombre || '',
-                    direccion: currentCentro.direccion || '',
-                    telefono: currentCentro.telefono || '',
-                    cuit: currentCentro.cuit || '',
-                    logo_url: currentCentro.logo_url || ''
-                  })
+                  loadCurrentCentroIntoForm()
                   setCreatingCentro(false)
                 } else {
                   handleNewCentro()
