@@ -10,7 +10,7 @@ import { exportToPDF, exportToExcel } from '@/utils/export'
 import { formatCLP } from '@/utils/currency'
 
 const Reportes = () => {
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [selectedMonth, setSelectedMonth] = useState(dateFormat(new Date(), 'yyyy-MM'))
   const [selectedProfesional, setSelectedProfesional] = useState<string>('todos')
   const [reporteData, setReporteData] = useState<any>(null)
@@ -31,7 +31,7 @@ const Reportes = () => {
       setLoading(true)
       
       const [year, month] = selectedMonth.split('-').map(Number)
-      const reporte = await reportesService.getReporteMensual(year, month, currentSucursal?.id)
+      const reporte = await reportesService.getReporteMensual(year, month, currentSucursal?.id, currentCentro?.id)
       
       // Obtener atenciones del mes para detalle por profesional
       const lastDay = new Date(year, month, 0).getDate()
@@ -39,9 +39,9 @@ const Reportes = () => {
       const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay}`
       
       const [atencionesData, profesionalesData, costosData] = await Promise.all([
-        atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id),
-        profesionalesService.getAll(currentSucursal?.id),
-        costosService.getByDateRange(startDate, endDate, currentSucursal?.id)
+        atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id),
+        profesionalesService.getAll(currentSucursal?.id, currentCentro?.id),
+        costosService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
       ])
       
       let atencionesMes = atencionesData

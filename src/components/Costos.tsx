@@ -10,7 +10,7 @@ import { formatCLP } from '@/utils/currency'
 import CostoForm from './CostoForm'
 
 const Costos = () => {
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [costos, setCostos] = useState<Costo[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTipo, setSelectedTipo] = useState<'todos' | 'fijo' | 'variable' | 'aporte'>('todos')
@@ -33,7 +33,7 @@ const Costos = () => {
       const startDate = `${year}-${month.toString().padStart(2, '0')}-01`
       const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay}`
 
-      let data = await costosService.getByDateRange(startDate, endDate, currentSucursal?.id)
+      let data = await costosService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
       
       // Filtrar por tipo
       if (selectedTipo !== 'todos') {

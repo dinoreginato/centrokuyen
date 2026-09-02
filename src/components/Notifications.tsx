@@ -130,7 +130,7 @@ const Notifications = ({ appointments }: NotificationsProps) => {
 
       {/* Notification Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+        <div className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-gray-200 bg-white shadow-lg">
           <div className="p-4 border-b border-gray-200">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold text-gray-800">Notificaciones</h3>

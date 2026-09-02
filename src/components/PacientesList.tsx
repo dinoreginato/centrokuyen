@@ -7,7 +7,7 @@ import { Paciente } from '@/types/database'
 import { pacientesService } from '@/utils/supabase'
 
 const PacientesList = () => {
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -21,7 +21,7 @@ const PacientesList = () => {
   const loadPacientes = async () => {
     try {
       setLoading(true)
-      const data = await pacientesService.getAll(currentSucursal?.id)
+      const data = await pacientesService.getAll(currentSucursal?.id, currentCentro?.id)
       setPacientes(data)
     } catch (error) {
       toast.error('Error al cargar pacientes')

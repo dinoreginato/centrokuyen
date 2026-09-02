@@ -11,7 +11,7 @@ import { es } from 'date-fns/locale'
 
 const Agenda = () => {
   const { user } = useAuth()
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [atenciones, setAtenciones] = useState<Atencion[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -28,7 +28,7 @@ const Agenda = () => {
   const loadData = async () => {
     try {
       setLoading(true)
-      const atencionesData = await atencionesService.getAll(currentSucursal?.id)
+      const atencionesData = await atencionesService.getAll(currentSucursal?.id, currentCentro?.id)
       
       const filteredAtenciones = (user?.rol === 'profesional' && user.profesional_id)
         ? atencionesData.filter(a => a.profesional_id === user.profesional_id)

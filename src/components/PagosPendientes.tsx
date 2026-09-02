@@ -28,7 +28,7 @@ const PagosPendientes = () => {
   const [expandedPaciente, setExpandedPaciente] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [showOnlyOverdue, setShowOnlyOverdue] = useState(false)
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
 
   const normalizePhoneCL = (raw: string) => {
     let phone = raw.replace(/\D/g, '')
@@ -93,7 +93,7 @@ const PagosPendientes = () => {
   const loadPendientes = async () => {
     try {
       setLoading(true)
-      const data = await atencionesService.getPendientes(currentSucursal?.id)
+      const data = await atencionesService.getPendientes(currentSucursal?.id, currentCentro?.id)
       const filteredData = data.filter(isValidPendingPayment)
       
       // Agrupar atenciones por mes y luego por paciente

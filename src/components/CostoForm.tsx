@@ -49,7 +49,7 @@ const CATEGORIAS_APORTES = [
 ];
 
 export default function CostoForm({ costo, onSuccess, onCancel }: CostoFormProps) {
-  const { currentSucursal } = useSucursal();
+  const { currentCentro, currentSucursal } = useSucursal();
   const { register, handleSubmit, watch, formState: { errors } } = useForm<CostoFormData>({
     defaultValues: costo ? {
       tipo: costo.tipo,
@@ -77,7 +77,11 @@ export default function CostoForm({ costo, onSuccess, onCancel }: CostoFormProps
     }
 
     try {
-      const dataToSave = { ...data, sucursal_id: currentSucursal.id };
+      const dataToSave = {
+        ...data,
+        centro_id: currentCentro?.id || currentSucursal.centro_id,
+        sucursal_id: currentSucursal.id
+      };
       
       if (costo) {
         await costosService.update(costo.id, dataToSave);

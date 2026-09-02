@@ -8,7 +8,7 @@ import { profesionalesService } from '@/utils/supabase'
 import { formatCLP } from '@/utils/currency'
 
 const ProfesionalesList = () => {
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [profesionales, setProfesionales] = useState<Profesional[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -22,7 +22,7 @@ const ProfesionalesList = () => {
   const loadProfesionales = async () => {
     try {
       setLoading(true)
-      const data = await profesionalesService.getAll(currentSucursal?.id)
+      const data = await profesionalesService.getAll(currentSucursal?.id, currentCentro?.id)
       setProfesionales(data)
     } catch (error) {
       toast.error('Error al cargar profesionales')

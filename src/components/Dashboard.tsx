@@ -67,7 +67,7 @@ const DashboardStatCard = ({
 
 const Dashboard = () => {
   const { user } = useAuth()
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [stats, setStats] = useState({
     totalProfesionales: 0,
     totalPacientes: 0,
@@ -96,7 +96,7 @@ const Dashboard = () => {
       const startDate = today.toISOString().split('T')[0]
       const endDate = nextWeek.toISOString().split('T')[0]
       
-      const appointments = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id)
+      const appointments = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
       
       // Filter notifications for professional
       const filteredAppointments = (user?.rol === 'profesional' && user.profesional_id)
@@ -119,9 +119,9 @@ const Dashboard = () => {
       const endOfCurrentMonth = endOfMonth(currentDate)
       
       const [profesionales, pacientes, atenciones] = await Promise.all([
-        profesionalesService.getAll(currentSucursal?.id),
-        pacientesService.getAll(currentSucursal?.id),
-        atencionesService.getAll(currentSucursal?.id)
+        profesionalesService.getAll(currentSucursal?.id, currentCentro?.id),
+        pacientesService.getAll(currentSucursal?.id, currentCentro?.id),
+        atencionesService.getAll(currentSucursal?.id, currentCentro?.id)
       ])
 
       // Determine filters based on role

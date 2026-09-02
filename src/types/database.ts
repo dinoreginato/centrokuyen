@@ -1,3 +1,15 @@
+export interface Centro {
+  id: string
+  nombre: string
+  direccion?: string | null
+  telefono?: string | null
+  cuit?: string | null
+  logo_url?: string | null
+  activo: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface Profesional {
   id: string
   nombre: string
@@ -7,6 +19,7 @@ export interface Profesional {
   porcentaje_pago: number
   monto_fijo_pago: number
   activo: boolean
+  centro_id?: string | null
   sucursal_id?: string | null
   created_at: string
   updated_at: string
@@ -26,6 +39,7 @@ export interface Paciente {
   direccion: string
   notas: string
   activo?: boolean
+  centro_id?: string | null
   sucursal_id?: string | null
   created_at: string
   updated_at: string
@@ -47,6 +61,7 @@ export interface Atencion {
   numero_boleta?: string // Nuevo campo para número de boleta
   observaciones: string
   activo?: boolean
+  centro_id?: string
   sucursal_id: string
   created_at: string
   updated_at: string
@@ -87,6 +102,7 @@ export interface Costo {
   fecha: string
   recurrente: boolean
   activo?: boolean
+  centro_id?: string
   sucursal_id: string
   created_at: string
   updated_at: string
@@ -98,6 +114,7 @@ export interface TipoAtencion {
   valor_base: number
   descripcion: string
   activo: boolean
+  centro_id?: string | null
   sucursal_id?: string | null
   created_at: string
 }
@@ -121,21 +138,25 @@ export interface Usuario {
   rol: 'admin' | 'profesional' | 'usuario'
   activo: boolean
   profesional_id?: string
+  centro_id?: string | null
   sucursal_id?: string
   created_at: string
   updated_at: string
   
   // Relaciones
+  centro?: Centro
   profesional?: Profesional
 }
 
 export interface Sucursal {
   id: string
   nombre: string
+  centro_id: string
   direccion?: string
   telefono?: string
   activo: boolean
   created_at: string
+  centro?: Centro
 }
 
 export interface ReporteMensual {

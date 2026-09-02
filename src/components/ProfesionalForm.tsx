@@ -9,7 +9,7 @@ import { TipoAtencion, ProfesionalComision } from '@/types/database'
 const ProfesionalForm = () => {
   const navigate = useNavigate()
   const { id } = useParams()
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const isEditing = !!id
 
   const [formData, setFormData] = useState({
@@ -40,7 +40,7 @@ const ProfesionalForm = () => {
 
   const loadTiposAtencion = async () => {
     try {
-      const data = await tiposAtencionService.getAll(currentSucursal?.id)
+      const data = await tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id)
       setTiposAtencion(data)
     } catch (error) {
       console.error('Error cargando tipos de atención:', error)
@@ -52,7 +52,7 @@ const ProfesionalForm = () => {
       setLoading(true)
       const [profesional, tiposData, comisionesData] = await Promise.all([
         profesionalesService.getById(id!),
-        tiposAtencionService.getAll(currentSucursal?.id),
+        tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id),
         profesionalComisionesService.getAll(id!)
       ])
       
@@ -141,6 +141,7 @@ const ProfesionalForm = () => {
         ...formData,
         email: email === '' ? null : email,
         telefono: telefono === '' ? null : telefono,
+        centro_id: currentCentro?.id || currentSucursal?.centro_id || null,
         sucursal_id: currentSucursal?.id || null
       }
 

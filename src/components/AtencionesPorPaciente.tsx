@@ -12,7 +12,7 @@ import { formatCLP } from '@/utils/currency'
 
 const AtencionesPorPaciente = () => {
   const { user } = useAuth()
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
 
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [loadingPacientes, setLoadingPacientes] = useState(true)
@@ -35,7 +35,7 @@ const AtencionesPorPaciente = () => {
   const loadPacientes = async () => {
     try {
       setLoadingPacientes(true)
-      const data = await pacientesService.getAll(currentSucursal?.id)
+      const data = await pacientesService.getAll(currentSucursal?.id, currentCentro?.id)
       setPacientes(data)
     } catch (error) {
       toast.error('Error al cargar pacientes')
@@ -49,7 +49,7 @@ const AtencionesPorPaciente = () => {
     try {
       setLoadingAtenciones(true)
       const profesionalId = user?.rol === 'profesional' ? user.profesional_id : undefined
-      const data = await atencionesService.getByPacienteId(paciente.id, currentSucursal?.id, profesionalId)
+      const data = await atencionesService.getByPacienteId(paciente.id, currentSucursal?.id, profesionalId, currentCentro?.id)
       setAtenciones(data)
     } catch (error) {
       toast.error('Error al cargar atenciones')
@@ -264,4 +264,3 @@ const AtencionesPorPaciente = () => {
 }
 
 export default AtencionesPorPaciente
-

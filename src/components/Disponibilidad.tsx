@@ -21,7 +21,7 @@ const timeToMinutes = (time: string) => {
 
 const Disponibilidad = () => {
   const { user } = useAuth()
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
 
   const [profesionales, setProfesionales] = useState<Profesional[]>([])
   const [loadingProfesionales, setLoadingProfesionales] = useState(true)
@@ -46,7 +46,7 @@ const Disponibilidad = () => {
   const loadProfesionales = async () => {
     try {
       setLoadingProfesionales(true)
-      const data = await profesionalesService.getAll(currentSucursal?.id)
+      const data = await profesionalesService.getAll(currentSucursal?.id, currentCentro?.id)
       const filtered = (user?.rol === 'profesional' && user.profesional_id)
         ? data.filter(p => p.id === user.profesional_id)
         : data
@@ -73,7 +73,8 @@ const Disponibilidad = () => {
         selectedProfesionalId,
         selectedDate,
         selectedDate,
-        currentSucursal?.id
+        currentSucursal?.id,
+        currentCentro?.id
       )
       setAtenciones(data)
     } catch (error) {
@@ -256,4 +257,3 @@ const Disponibilidad = () => {
 }
 
 export default Disponibilidad
-

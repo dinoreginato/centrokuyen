@@ -30,7 +30,7 @@ interface DashboardChartsProps {
 }
 
 const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [monthlyData, setMonthlyData] = useState<ChartData[]>([])
   const [professionalData, setProfessionalData] = useState<ProfessionalData[]>([])
   const [paymentStatusData, setPaymentStatusData] = useState<PaymentStatusData[]>([])
@@ -70,7 +70,7 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
       const startStr = dateFormat(startDate, 'yyyy-MM-dd')
       const endStr = dateFormat(endDate, 'yyyy-MM-dd')
       
-      const atenciones = await atencionesService.getByDateRange(startStr, endStr, currentSucursal?.id)
+      const atenciones = await atencionesService.getByDateRange(startStr, endStr, currentSucursal?.id, currentCentro?.id)
       const filtered = profesionalId ? atenciones.filter(a => a.profesional_id === profesionalId) : atenciones
       
       const ingresos = filtered.reduce((sum, a) => sum + a.valor_cobrado, 0)
@@ -86,12 +86,12 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
   }
 
   const loadProfessionalData = async (): Promise<ProfessionalData[]> => {
-    const profesionales = await profesionalesService.getAll()
+    const profesionales = await profesionalesService.getAll(currentSucursal?.id, currentCentro?.id)
     const currentMonth = new Date()
     const startDate = dateFormat(startOfMonth(currentMonth), 'yyyy-MM-dd')
     const endDate = dateFormat(endOfMonth(currentMonth), 'yyyy-MM-dd')
     
-    const atenciones = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id)
+    const atenciones = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
     
     const data = profesionales.map(profesional => {
       const atencionesProf = atenciones.filter(a => a.profesional_id === profesional.id)
@@ -112,7 +112,7 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
     const startDate = dateFormat(startOfMonth(currentMonth), 'yyyy-MM-dd')
     const endDate = dateFormat(endOfMonth(currentMonth), 'yyyy-MM-dd')
     
-    const atenciones = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id)
+    const atenciones = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
     const filtered = atenciones.filter(a => a.profesional_id === profesionalId)
 
     // Group by tipo_atencion
@@ -139,7 +139,7 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
     const startDate = dateFormat(startOfMonth(currentMonth), 'yyyy-MM-dd')
     const endDate = dateFormat(endOfMonth(currentMonth), 'yyyy-MM-dd')
     
-    const atenciones = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id)
+    const atenciones = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
     const filtered = profesionalId ? atenciones.filter(a => a.profesional_id === profesionalId) : atenciones
     
     const pagadas = filtered.filter(a => a.pagado).length

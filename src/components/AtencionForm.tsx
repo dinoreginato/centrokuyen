@@ -51,7 +51,7 @@ const AtencionForm = () => {
   const navigate = useNavigate()
   const { id } = useParams()
   const location = useLocation()
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const { user } = useAuth()
   const isEditing = !!id
   
@@ -129,9 +129,9 @@ const AtencionForm = () => {
     try {
       setLoading(true)
       const [profesionalesData, pacientesData, tiposData] = await Promise.all([
-        profesionalesService.getAll(currentSucursal?.id),
-        pacientesService.getAll(currentSucursal?.id),
-        tiposAtencionService.getAll(currentSucursal?.id)
+        profesionalesService.getAll(currentSucursal?.id, currentCentro?.id),
+        pacientesService.getAll(currentSucursal?.id, currentCentro?.id),
+        tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id)
       ])
 
       let filteredProfesionales = profesionalesData
@@ -236,6 +236,7 @@ const AtencionForm = () => {
 
       const dataToSave = {
         ...normalizedData,
+        centro_id: currentCentro?.id || currentSucursal.centro_id,
         sucursal_id: currentSucursal.id
       }
 

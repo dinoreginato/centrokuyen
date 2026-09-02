@@ -14,20 +14,15 @@ const Login = () => {
   })
   const [loading, setLoading] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
-  const [nombreCentro, setNombreCentro] = useState('Centro Kuyen')
+  const [nombreCentro, setNombreCentro] = useState('Sistema Clínico Multi-Centro')
 
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        console.log('Cargando configuración en Login...')
         const config = await centroConfigService.getConfig()
-        console.log('Configuración cargada:', config)
         if (config) {
           if (config.logo_url) {
-            console.log('Logo encontrado, longitud:', config.logo_url.length)
             setLogoUrl(config.logo_url)
-          } else {
-            console.log('Configuración encontrada pero sin logo')
           }
           if (config.nombre) setNombreCentro(config.nombre)
         }
@@ -67,7 +62,7 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-8">
       <div className="max-w-md w-full">
         {/* Logo o título */}
         <div className="text-center mb-8">
@@ -78,12 +73,12 @@ const Login = () => {
               <Activity className="h-12 w-12" />
             )}
           </div>
-          <h1 className="text-3xl font-bold text-gray-800">{nombreCentro}</h1>
+          <h1 className="text-2xl font-bold text-gray-800 sm:text-3xl">{nombreCentro}</h1>
           <p className="text-gray-600 mt-2">Sistema de Gestión Médica</p>
         </div>
 
         {/* Tarjeta de login */}
-        <div className="bg-white rounded-lg shadow-xl p-8">
+        <div className="rounded-2xl bg-white p-6 shadow-xl sm:p-8">
           <div className="text-center mb-6">
             <h2 className="text-2xl font-semibold text-gray-800">Iniciar Sesión</h2>
             <p className="text-gray-600 text-sm mt-1">Accede al sistema con tus credenciales</p>
@@ -159,9 +154,9 @@ const Login = () => {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-8">
+        <div className="mt-8 text-center">
           <p className="text-sm text-gray-500">
-            © 2024 Centro Kuyen. Todos los derechos reservados.
+            Acceso seguro para centros, sucursales y usuarios operativos.
           </p>
         </div>
       </div>
