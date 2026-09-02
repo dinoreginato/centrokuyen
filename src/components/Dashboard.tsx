@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Users, UserPlus, Calendar, DollarSign, TrendingUp, Activity, BarChart3, Bell, Wallet, CreditCard, PiggyBank, LucideIcon } from 'lucide-react'
+import { Users, UserPlus, Calendar, DollarSign, TrendingUp, Activity, BarChart3, Bell, LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
-import { profesionalesService, pacientesService, atencionesService, profesionalComisionesService, reportesService } from '@/utils/supabase'
-import { format as dateFormat, startOfMonth, endOfMonth, parseISO, addDays, subDays } from 'date-fns'
+import { profesionalesService, pacientesService, atencionesService, profesionalComisionesService } from '@/utils/supabase'
+import { format as dateFormat, startOfMonth, endOfMonth, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import DashboardCharts from './DashboardCharts'
 import { autoNotificationService, notificationService } from '@/utils/notifications'
 import { formatCLP } from '@/utils/currency'
-import { isActiveClinicalAtencion, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 interface DashboardStatCardProps {
   title: string
@@ -46,7 +45,7 @@ const DashboardStatCard = ({
         </div>
 
         <div className="mt-auto">
-          <p className={`text-[clamp(1.55rem,2.15vw,2.45rem)] font-bold leading-tight tracking-tight tabular-nums break-words ${valueClassName}`}>
+          <p className={`overflow-hidden text-ellipsis text-[clamp(1.9rem,2.5vw,2.8rem)] font-bold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap ${valueClassName}`}>
             {value}
           </p>
           {subtitle && (
@@ -68,21 +67,13 @@ const DashboardStatCard = ({
 
 const Dashboard = () => {
   const { user } = useAuth()
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [stats, setStats] = useState({
     totalProfesionales: 0,
     totalPacientes: 0,
     totalAtencionesMes: 0,
     ingresosMes: 0,
-    ingresosCobradosMes: 0,
-    ingresosPendientesMes: 0,
-    ingresosProyectadosMes: 0,
-    pagosProfesionalesMes: 0,
-    costosOperativosMes: 0,
-    costosMes: 0,
-    utilidadMes: 0,
-    margenMes: 0,
-    citasCanceladasMes: 0,
+    gananciasAcumuladas: 0,
     atencionesPendientes: 0,
     proximasAtenciones: [] as any[]
   })
@@ -100,13 +91,12 @@ const Dashboard = () => {
   const checkNotifications = async () => {
     try {
       const today = new Date()
-      const startWindow = subDays(today, 45)
-      const nextWeek = addDays(today, 7)
+      const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
       
-      const startDate = startWindow.toISOString().split('T')[0]
+      const startDate = today.toISOString().split('T')[0]
       const endDate = nextWeek.toISOString().split('T')[0]
       
-      const appointments = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id)
+      const appointments = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
       
       // Filter notifications for professional
       const filteredAppointments = (user?.rol === 'profesional' && user.profesional_id)
@@ -129,13 +119,16 @@ const Dashboard = () => {
       const endOfCurrentMonth = endOfMonth(currentDate)
       
       const [profesionales, pacientes, atenciones] = await Promise.all([
-        profesionalesService.getAll(currentSucursal?.id),
-        pacientesService.getAll(currentSucursal?.id),
-        atencionesService.getAll(currentSucursal?.id)
+        profesionalesService.getAll(currentSucursal?.id, currentCentro?.id),
+        pacientesService.getAll(currentSucursal?.id, currentCentro?.id),
+        atencionesService.getAll(currentSucursal?.id, currentCentro?.id)
       ])
 
       // Determine filters based on role
       const isProfesional = user?.rol === 'profesional' && user.profesional_id
+      const esProfesionalEnRengoActual = Boolean(
+        isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
+      )
       
       let filteredAtenciones = atenciones
       if (isProfesional) {
@@ -167,28 +160,13 @@ const Dashboard = () => {
         return atencionDate >= startOfCurrentMonth && atencionDate <= endOfCurrentMonth
       })
 
-      const atencionesMesActivas = atencionesMes.filter(isActiveClinicalAtencion)
-      const atencionesMesFacturables = atencionesMesActivas.filter(isBillableAtencion)
-      const citasCanceladasMes = atencionesMes.filter(a => !a.es_bloqueo && a.estado_cita === 'cancelada').length
-
       // 4. Ingresos Este Mes / Mis Ganancias (SOLO PAGADAS)
       let ingresosMes = 0
-      let ingresosCobradosMes = 0
-      let ingresosPendientesMes = 0
-      let ingresosProyectadosMes = 0
-      let pagosProfesionalesMes = 0
-      let costosOperativosMes = 0
-      let costosMes = 0
-      let utilidadMes = 0
-      let margenMes = 0
+      let gananciasAcumuladas = 0
 
       // Filtramos solo las pagadas para el cálculo de dinero
-      const atencionesPagadasMes = atencionesMesFacturables.filter(a => a.pagado)
-      const atencionesPendientesMesList = atencionesMesFacturables.filter(a => !a.pagado)
-
-      ingresosPendientesMes = sumFinancialAmounts(atencionesPendientesMesList)
-      ingresosProyectadosMes = sumFinancialAmounts(atencionesMesFacturables)
-      ingresosCobradosMes = sumFinancialAmounts(atencionesPagadasMes)
+      const atencionesPagadasMes = atencionesMes.filter(a => a.pagado)
+      const atencionesPagadasHistoricas = filteredAtenciones.filter(a => a.pagado)
 
       if (isProfesional && user?.profesional_id) {
         const pid = user.profesional_id
@@ -207,27 +185,18 @@ const Dashboard = () => {
           }
 
           ingresosMes = calcularGananciaProfesional(atencionesPagadasMes)
+          gananciasAcumuladas = esProfesionalEnRengoActual
+            ? calcularGananciaProfesional(atencionesPagadasHistoricas)
+            : ingresosMes
         }
-        utilidadMes = ingresosMes
-        margenMes = ingresosProyectadosMes > 0 ? (ingresosMes / ingresosProyectadosMes) * 100 : 0
       } else {
-        // Para admin, mostramos un flujo simple: ingresos -> costos -> utilidad
-        const reporteMensual = await reportesService.getReporteMensual(year, month, currentSucursal?.id)
-        ingresosMes = reporteMensual.ingresos_totales
-        ingresosCobradosMes = reporteMensual.ingresos_cobrados
-        ingresosPendientesMes = Math.max(ingresosMes - ingresosCobradosMes, 0)
-        ingresosProyectadosMes = reporteMensual.ingresos_totales
-        pagosProfesionalesMes = reporteMensual.total_pagado_profesionales
-        costosOperativosMes = reporteMensual.total_costos
-        costosMes = pagosProfesionalesMes + costosOperativosMes
-        utilidadMes = ingresosMes - costosMes
-        margenMes = ingresosMes > 0 ? (utilidadMes / ingresosMes) * 100 : 0
+        // Para admin, sumamos el total cobrado de las atenciones pagadas
+        ingresosMes = atencionesPagadasMes.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
+        gananciasAcumuladas = ingresosMes
       }
 
       // 5. Atenciones Pendientes (filtered)
-      const atencionesPendientes = filteredAtenciones.filter(
-        a => isBillableAtencion(a) && !a.pagado && a.estado_asistencia !== 'no_asistio'
-      ).length
+      const atencionesPendientes = filteredAtenciones.filter(a => !a.pagado && a.estado_asistencia !== 'no_asistio').length
 
       // 6. Próximas Atenciones (filtered)
       const proximosDias = new Date()
@@ -236,7 +205,7 @@ const Dashboard = () => {
       const proximasAtenciones = filteredAtenciones
         .filter(atencion => {
           const atencionDate = parseISO(atencion.fecha)
-          return !atencion.es_bloqueo && atencion.estado_cita !== 'cancelada' && atencionDate >= new Date() && atencionDate <= proximosDias
+          return atencionDate >= new Date() && atencionDate <= proximosDias
         })
         .sort((a, b) => new Date(`${a.fecha}T${a.hora}`).getTime() - new Date(`${b.fecha}T${b.hora}`).getTime())
         .slice(0, 5)
@@ -244,17 +213,9 @@ const Dashboard = () => {
       setStats({
         totalProfesionales: metric1Value,
         totalPacientes: metric2Value,
-        totalAtencionesMes: atencionesMesActivas.length,
+        totalAtencionesMes: atencionesMes.length,
         ingresosMes,
-        ingresosCobradosMes,
-        ingresosPendientesMes,
-        ingresosProyectadosMes,
-        pagosProfesionalesMes,
-        costosOperativosMes,
-        costosMes,
-        utilidadMes,
-        margenMes,
-        citasCanceladasMes,
+        gananciasAcumuladas,
         atencionesPendientes,
         proximasAtenciones
       })
@@ -278,10 +239,11 @@ const Dashboard = () => {
   const esProfesionalEnRengo = isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
   const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
   const canManagePacientes = !isProfesional || (isProfesional && isDalcahue)
-  const professionalIncomeTitle = esProfesionalEnRengo ? 'Mis Ganancias del Mes' : 'Mis Ganancias Cobradas'
+  const professionalIncomeTitle = esProfesionalEnRengo ? 'Mis Ganancias Acumuladas' : 'Mis Ganancias'
+  const professionalIncomeValue = esProfesionalEnRengo ? stats.gananciasAcumuladas : stats.ingresosMes
   const professionalIncomeSubtitle = esProfesionalEnRengo
-    ? 'Total del mes seleccionado'
-    : undefined
+    ? 'Total cobrado como profesional'
+    : 'Total cobrado del mes'
 
   return (
     <div className="space-y-6">
@@ -294,15 +256,15 @@ const Dashboard = () => {
             onChange={(e) => setSelectedMonth(e.target.value)}
             className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-medical-blue focus:border-transparent"
           />
-          <div className="hidden rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 shadow-sm sm:block">
+          <div className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 shadow-sm hidden sm:block">
             {dateFormat(new Date(), 'EEEE d MMMM yyyy', { locale: es })}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 items-stretch sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4 items-stretch">
         <DashboardStatCard
-          to={isProfesional ? "/agenda" : "/profesionales"}
+          to={isProfesional ? '/agenda' : '/profesionales'}
           title={isProfesional ? 'Total Atenciones' : 'Total Profesionales'}
           value={stats.totalProfesionales}
           icon={Users}
@@ -311,7 +273,7 @@ const Dashboard = () => {
         />
 
         <DashboardStatCard
-          to={isProfesional ? "/agenda" : "/pacientes"}
+          to={isProfesional ? '/agenda' : '/pacientes'}
           title={isProfesional ? 'Mis Pacientes' : 'Total Pacientes'}
           value={stats.totalPacientes}
           icon={UserPlus}
@@ -321,7 +283,7 @@ const Dashboard = () => {
 
         <DashboardStatCard
           to="/agenda"
-          title={isProfesional ? 'Mis Atenciones (Mes)' : 'Atenciones Este Mes'}
+          title={isProfesional ? 'Mis Atenciones del Mes' : 'Atenciones Este Mes'}
           value={stats.totalAtencionesMes}
           icon={Calendar}
           iconClassName="bg-orange-600 text-white"
@@ -329,99 +291,14 @@ const Dashboard = () => {
         />
 
         <DashboardStatCard
-          title={isProfesional ? professionalIncomeTitle : 'Ingresos del Mes'}
-          value={formatCLP(stats.ingresosMes)}
+          title={isProfesional ? professionalIncomeTitle : 'Ingresos Este Mes'}
+          value={formatCLP(isProfesional ? professionalIncomeValue : stats.ingresosMes)}
           icon={DollarSign}
           iconClassName="bg-purple-600 text-white"
           valueClassName="text-purple-600"
-          subtitle={isProfesional ? professionalIncomeSubtitle : `Cobrado: ${formatCLP(stats.ingresosCobradosMes)}`}
+          subtitle={isProfesional ? professionalIncomeSubtitle : 'Ingresos cobrados del mes'}
         />
       </div>
-
-      {!esProfesionalEnRengo && (
-        <div className={`grid grid-cols-1 gap-5 items-stretch md:grid-cols-2 ${isProfesional ? 'xl:grid-cols-4' : 'xl:grid-cols-3 2xl:grid-cols-4'}`}>
-          {isProfesional ? (
-          <>
-            <DashboardStatCard
-              title="Por Cobrar"
-              value={formatCLP(stats.ingresosPendientesMes)}
-              icon={CreditCard}
-              iconClassName="bg-amber-100 text-amber-700"
-              valueClassName="text-amber-600"
-            />
-
-            <DashboardStatCard
-              title="Proyección del Mes"
-              value={formatCLP(stats.ingresosProyectadosMes)}
-              icon={Wallet}
-              iconClassName="bg-blue-100 text-blue-700"
-              valueClassName="text-blue-600"
-            />
-
-            <DashboardStatCard
-              title="Rendimiento Cobrado"
-              value={formatCLP(stats.utilidadMes)}
-              icon={TrendingUp}
-              iconClassName={stats.utilidadMes >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}
-              valueClassName={stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'}
-            />
-
-            <DashboardStatCard
-              title="Cobrado / Proyectado"
-              value={`${stats.margenMes.toFixed(1)}%`}
-              icon={BarChart3}
-              iconClassName="bg-slate-100 text-slate-700"
-              valueClassName="text-slate-700"
-            />
-          </>
-        ) : (
-          <>
-            <DashboardStatCard
-              title="Cobrado"
-              value={formatCLP(stats.ingresosCobradosMes)}
-              icon={CreditCard}
-              iconClassName="bg-amber-100 text-amber-700"
-              valueClassName="text-amber-600"
-            />
-
-            <DashboardStatCard
-              title="Por Cobrar"
-              value={formatCLP(stats.ingresosPendientesMes)}
-              icon={Wallet}
-              iconClassName="bg-blue-100 text-blue-700"
-              valueClassName="text-blue-600"
-            />
-
-            <DashboardStatCard
-              title="Costos Totales"
-              value={formatCLP(stats.costosMes)}
-              icon={PiggyBank}
-              iconClassName="bg-rose-100 text-rose-700"
-              valueClassName="text-rose-600"
-              subtitle={`Prof: ${formatCLP(stats.pagosProfesionalesMes)} + Op: ${formatCLP(stats.costosOperativosMes)}`}
-            />
-
-            <DashboardStatCard
-              title="Utilidad Neta"
-              value={formatCLP(stats.utilidadMes)}
-              icon={TrendingUp}
-              iconClassName={stats.utilidadMes >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}
-              valueClassName={stats.utilidadMes >= 0 ? 'text-green-600' : 'text-red-600'}
-              subtitle="Ingresos - Costos totales"
-            />
-
-            <DashboardStatCard
-              title="Margen del Mes"
-              value={`${stats.margenMes.toFixed(1)}%`}
-              icon={BarChart3}
-              iconClassName="bg-slate-100 text-slate-700"
-              valueClassName="text-slate-700"
-              subtitle={`Canceladas: ${stats.citasCanceladasMes}`}
-            />
-          </>
-          )}
-        </div>
-      )}
       
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
         <div className="mb-5 flex items-center justify-between gap-3">
@@ -485,14 +362,16 @@ const Dashboard = () => {
 
       {stats.proximasAtenciones.length > 0 && (
         <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div className="mb-5">
-            <h2 className="text-xl font-semibold text-gray-800">Próximas Atenciones</h2>
-            <p className="text-sm text-gray-500">Resumen de las próximas citas agendadas.</p>
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800">Próximas Atenciones</h2>
+              <p className="text-sm text-gray-500">Resumen de las próximas citas agendadas.</p>
+            </div>
           </div>
           <div className="space-y-3">
             {stats.proximasAtenciones.map(atencion => (
               <div key={atencion.id} className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 md:flex-row md:items-center md:justify-between">
-                <div className="flex min-w-0 items-center space-x-3">
+                <div className="flex items-center space-x-3 min-w-0">
                   <div className="rounded-full bg-medical-blue p-2.5 text-white shadow-sm">
                     <Activity className="h-4 w-4" />
                   </div>

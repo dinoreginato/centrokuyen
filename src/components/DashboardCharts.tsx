@@ -6,8 +6,6 @@ import { useSucursal } from '@/contexts/SucursalContext'
 import { format as dateFormat, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { formatCLP } from '@/utils/currency'
-import { Atencion } from '@/types/database'
-import { isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 interface ChartData {
   month: string
@@ -32,7 +30,7 @@ interface DashboardChartsProps {
 }
 
 const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [monthlyData, setMonthlyData] = useState<ChartData[]>([])
   const [professionalData, setProfessionalData] = useState<ProfessionalData[]>([])
   const [paymentStatusData, setPaymentStatusData] = useState<PaymentStatusData[]>([])
@@ -61,10 +59,6 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
     }
   }
 
-  const getFinancialAtenciones = (items: Atencion[]) => {
-    return items.filter(isBillableAtencion)
-  }
-
   const loadMonthlyData = async (): Promise<ChartData[]> => {
     const data: ChartData[] = []
     
@@ -76,15 +70,14 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
       const startStr = dateFormat(startDate, 'yyyy-MM-dd')
       const endStr = dateFormat(endDate, 'yyyy-MM-dd')
       
-      const atenciones = await atencionesService.getByDateRange(startStr, endStr, currentSucursal?.id)
+      const atenciones = await atencionesService.getByDateRange(startStr, endStr, currentSucursal?.id, currentCentro?.id)
       const filtered = profesionalId ? atenciones.filter(a => a.profesional_id === profesionalId) : atenciones
-      const active = getFinancialAtenciones(filtered)
       
-      const ingresos = sumFinancialAmounts(active.filter(a => a.pagado))
+      const ingresos = filtered.reduce((sum, a) => sum + a.valor_cobrado, 0)
       
       data.push({
         month: dateFormat(date, 'MMM yyyy', { locale: es }),
-        atenciones: active.length,
+        atenciones: filtered.length,
         ingresos: ingresos
       })
     }
@@ -93,16 +86,16 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
   }
 
   const loadProfessionalData = async (): Promise<ProfessionalData[]> => {
-    const profesionales = await profesionalesService.getAll()
+    const profesionales = await profesionalesService.getAll(currentSucursal?.id, currentCentro?.id)
     const currentMonth = new Date()
     const startDate = dateFormat(startOfMonth(currentMonth), 'yyyy-MM-dd')
     const endDate = dateFormat(endOfMonth(currentMonth), 'yyyy-MM-dd')
     
-    const atenciones = getFinancialAtenciones(await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id))
+    const atenciones = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
     
     const data = profesionales.map(profesional => {
       const atencionesProf = atenciones.filter(a => a.profesional_id === profesional.id)
-      const ingresos = sumFinancialAmounts(atencionesProf.filter(a => a.pagado))
+      const ingresos = atencionesProf.reduce((sum, a) => sum + a.valor_cobrado, 0)
       
       return {
         name: profesional.nombre.split(' ')[0], // Primer nombre
@@ -119,7 +112,7 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
     const startDate = dateFormat(startOfMonth(currentMonth), 'yyyy-MM-dd')
     const endDate = dateFormat(endOfMonth(currentMonth), 'yyyy-MM-dd')
     
-    const atenciones = getFinancialAtenciones(await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id))
+    const atenciones = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
     const filtered = atenciones.filter(a => a.profesional_id === profesionalId)
 
     // Group by tipo_atencion
@@ -131,9 +124,7 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
             groups[typeName] = { atenciones: 0, ingresos: 0 }
         }
         groups[typeName].atenciones += 1
-        if (a.pagado) {
-          groups[typeName].ingresos += a.valor_cobrado
-        }
+        groups[typeName].ingresos += a.valor_cobrado
     })
 
     return Object.entries(groups).map(([name, stats]) => ({
@@ -148,7 +139,7 @@ const DashboardCharts = ({ profesionalId }: DashboardChartsProps) => {
     const startDate = dateFormat(startOfMonth(currentMonth), 'yyyy-MM-dd')
     const endDate = dateFormat(endOfMonth(currentMonth), 'yyyy-MM-dd')
     
-    const atenciones = getFinancialAtenciones(await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id))
+    const atenciones = await atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
     const filtered = profesionalId ? atenciones.filter(a => a.profesional_id === profesionalId) : atenciones
     
     const pagadas = filtered.filter(a => a.pagado).length

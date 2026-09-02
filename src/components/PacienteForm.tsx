@@ -8,7 +8,7 @@ import { pacientesService } from '@/utils/supabase'
 const PacienteForm = () => {
   const navigate = useNavigate()
   const { id } = useParams()
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const isEditing = !!id
 
   const [formData, setFormData] = useState({
@@ -68,7 +68,7 @@ const PacienteForm = () => {
 
     // Validar RUT único
     try {
-      const existingPacientes = await pacientesService.getAll()
+      const existingPacientes = await pacientesService.getAll(currentSucursal?.id, currentCentro?.id)
       const rutExists = existingPacientes.some(p => 
         p.rut === formData.rut && p.id !== id
       )
@@ -90,6 +90,7 @@ const PacienteForm = () => {
       } else {
         await pacientesService.create({
           ...formData,
+          centro_id: currentCentro?.id || currentSucursal?.centro_id || null,
           sucursal_id: currentSucursal?.id
         })
         toast.success('Paciente creado exitosamente')

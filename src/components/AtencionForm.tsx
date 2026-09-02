@@ -51,7 +51,7 @@ const AtencionForm = () => {
   const navigate = useNavigate()
   const { id } = useParams()
   const location = useLocation()
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const { user } = useAuth()
   const isEditing = !!id
   
@@ -129,9 +129,9 @@ const AtencionForm = () => {
     try {
       setLoading(true)
       const [profesionalesData, pacientesData, tiposData] = await Promise.all([
-        profesionalesService.getAll(currentSucursal?.id),
-        pacientesService.getAll(currentSucursal?.id),
-        tiposAtencionService.getAll(currentSucursal?.id)
+        profesionalesService.getAll(currentSucursal?.id, currentCentro?.id),
+        pacientesService.getAll(currentSucursal?.id, currentCentro?.id),
+        tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id)
       ])
 
       let filteredProfesionales = profesionalesData
@@ -208,13 +208,8 @@ const AtencionForm = () => {
       return
     }
 
-    if (!formData.es_bloqueo && formData.valor_cobrado < 0) {
-      toast.error('El valor cobrado no puede ser negativo')
-      return
-    }
-
-    if (formData.es_bloqueo && !getBloqueoTipoAtencionId()) {
-      toast.error('Debe existir al menos un tipo de atención activo para registrar un bloqueo')
+    if (!formData.es_bloqueo && formData.valor_cobrado <= 0) {
+      toast.error('El valor cobrado debe ser mayor a 0')
       return
     }
 
@@ -230,10 +225,7 @@ const AtencionForm = () => {
         ? {
             ...formData,
             paciente_id: null,
-            // La columna tipo_atencion está relacionada con tipos_atencion por UUID.
-            // Para bloqueos usamos un tipo válido solo como referencia técnica;
-            // el detalle real del bloqueo queda en tipo_bloqueo y observaciones.
-            tipo_atencion: getBloqueoTipoAtencionId(),
+            tipo_atencion: getBloqueoLabel(formData.tipo_bloqueo),
             valor_cobrado: 0,
             pagado: true,
             estado_cita: 'confirmada' as EstadoCita,
@@ -244,6 +236,7 @@ const AtencionForm = () => {
 
       const dataToSave = {
         ...normalizedData,
+        centro_id: currentCentro?.id || currentSucursal.centro_id,
         sucursal_id: currentSucursal.id
       }
 
@@ -314,10 +307,6 @@ const AtencionForm = () => {
     }))
   }
 
-  const getBloqueoTipoAtencionId = () => {
-    return tiposAtencion[0]?.id || ''
-  }
-
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -370,7 +359,7 @@ const AtencionForm = () => {
                   ...prev,
                   es_bloqueo: isBloqueo,
                   paciente_id: isBloqueo ? '' : prev.paciente_id,
-                  tipo_atencion: isBloqueo ? getBloqueoTipoAtencionId() : prev.tipo_atencion,
+                  tipo_atencion: isBloqueo ? getBloqueoLabel(prev.tipo_bloqueo) : prev.tipo_atencion,
                   valor_cobrado: isBloqueo ? 0 : prev.valor_cobrado,
                   pagado: isBloqueo ? true : prev.pagado,
                   numero_boleta: isBloqueo ? '' : prev.numero_boleta,

@@ -40,16 +40,13 @@ const Notifications = ({ appointments }: NotificationsProps) => {
     )
     
     if (hasNewNotifications) {
-      const mergedNotifications = notificationService.mergeNotifications(newNotifications)
-      notificationService.saveNotifications(mergedNotifications)
+      notificationService.saveNotifications(newNotifications)
       loadNotifications()
       
       // Show toast for new notifications
-      const freshNotifications = newNotifications.filter(newNotif =>
-        !existingNotifications.some(existingNotif => existingNotif.id === newNotif.id)
-      )
-      if (freshNotifications.length > 0) {
-        toast.info(`Tienes ${freshNotifications.length} nueva${freshNotifications.length > 1 ? 's' : ''} notificación${freshNotifications.length > 1 ? 'es' : ''}`)
+      const newUnreadCount = newNotifications.filter(n => !n.read).length
+      if (newUnreadCount > 0) {
+        toast.info(`Tienes ${newUnreadCount} nueva${newUnreadCount > 1 ? 's' : ''} notificación${newUnreadCount > 1 ? 'es' : ''}`)
       }
     }
   }
@@ -111,10 +108,10 @@ const Notifications = ({ appointments }: NotificationsProps) => {
     // Handle different notification types
     if (notification.type === 'appointment_reminder' && notification.data) {
       // Navigate to appointment or show details
-      toast.info(`Cita con ${notification.data.paciente?.nombre || notification.data.paciente_nombre || 'Paciente'} - ${notification.data.fecha} ${notification.data.hora}`)
+      toast.info(`Cita con ${notification.data.paciente_nombre} - ${notification.data.fecha} ${notification.data.hora}`)
     } else if (notification.type === 'payment_due' && notification.data) {
       // Navigate to payment section
-      toast.info(`Pago pendiente por atención a ${notification.data.paciente?.nombre || notification.data.paciente_nombre || 'Paciente'}`)
+      toast.info(`Pago pendiente por atención a ${notification.data.paciente_nombre}`)
     }
   }
 
@@ -133,7 +130,7 @@ const Notifications = ({ appointments }: NotificationsProps) => {
 
       {/* Notification Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+        <div className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-gray-200 bg-white shadow-lg">
           <div className="p-4 border-b border-gray-200">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold text-gray-800">Notificaciones</h3>

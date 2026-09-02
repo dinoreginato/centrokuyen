@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { FileText, DollarSign, TrendingUp, Users, Calendar, Printer, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
@@ -8,10 +8,9 @@ import { format as dateFormat, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { exportToPDF, exportToExcel } from '@/utils/export'
 import { formatCLP } from '@/utils/currency'
-import { getFinancialAmount, isActiveClinicalAtencion, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 const Reportes = () => {
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [selectedMonth, setSelectedMonth] = useState(dateFormat(new Date(), 'yyyy-MM'))
   const [selectedProfesional, setSelectedProfesional] = useState<string>('todos')
   const [reporteData, setReporteData] = useState<any>(null)
@@ -20,14 +19,6 @@ const Reportes = () => {
   const [comisiones, setComisiones] = useState<any[]>([])
   const [costos, setCostos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-
-  const atencionesActivas = useMemo(() => {
-    return atenciones.filter(isActiveClinicalAtencion)
-  }, [atenciones])
-
-  const atencionesFacturables = useMemo(() => {
-    return atencionesActivas.filter(isBillableAtencion)
-  }, [atencionesActivas])
 
   useEffect(() => {
     if (currentSucursal) {
@@ -40,7 +31,7 @@ const Reportes = () => {
       setLoading(true)
       
       const [year, month] = selectedMonth.split('-').map(Number)
-      const reporte = await reportesService.getReporteMensual(year, month, currentSucursal?.id)
+      const reporte = await reportesService.getReporteMensual(year, month, currentSucursal?.id, currentCentro?.id)
       
       // Obtener atenciones del mes para detalle por profesional
       const lastDay = new Date(year, month, 0).getDate()
@@ -48,9 +39,9 @@ const Reportes = () => {
       const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay}`
       
       const [atencionesData, profesionalesData, costosData] = await Promise.all([
-        atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id),
-        profesionalesService.getAll(currentSucursal?.id),
-        costosService.getByDateRange(startDate, endDate, currentSucursal?.id)
+        atencionesService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id),
+        profesionalesService.getAll(currentSucursal?.id, currentCentro?.id),
+        costosService.getByDateRange(startDate, endDate, currentSucursal?.id, currentCentro?.id)
       ])
       
       let atencionesMes = atencionesData
@@ -80,8 +71,6 @@ const Reportes = () => {
   }
 
   const calcularPagoProfesional = (atencion: Atencion) => {
-    if (!isBillableAtencion(atencion)) return 0
-
     const profesional = profesionales.find(p => p.id === atencion.profesional_id)
     if (!profesional) return 0
     
@@ -109,7 +98,7 @@ const Reportes = () => {
   const getAtencionesPorProfesional = () => {
     const atencionesPorProfesional: { [key: string]: { profesional: Profesional, atenciones: Atencion[], total: number, pagosPendientes: number } } = {}
     
-    atencionesActivas.forEach(atencion => {
+    atenciones.forEach(atencion => {
       const profesional = profesionales.find(p => p.id === atencion.profesional_id)
       if (profesional) {
         if (!atencionesPorProfesional[profesional.id]) {
@@ -137,13 +126,13 @@ const Reportes = () => {
   const getResumenPorTipoAtencion = () => {
     const resumen: { [key: string]: { cantidad: number, total: number } } = {}
     
-    atencionesActivas.forEach(atencion => {
+    atenciones.forEach(atencion => {
       const tipoNombre = atencion.tipos_atencion?.nombre || atencion.tipo_atencion_nombre || 'Sin tipo'
       if (!resumen[tipoNombre]) {
         resumen[tipoNombre] = { cantidad: 0, total: 0 }
       }
       resumen[tipoNombre].cantidad += 1
-      resumen[tipoNombre].total += getFinancialAmount(atencion)
+      resumen[tipoNombre].total += atencion.valor_cobrado
     })
     
     return Object.entries(resumen)
@@ -161,7 +150,7 @@ const Reportes = () => {
           return
         }
         
-        const professionalAppointments = atencionesActivas.filter(a => a.profesional_id === selectedProfesional)
+        const professionalAppointments = atenciones.filter(a => a.profesional_id === selectedProfesional)
         const [year, month] = selectedMonth.split('-').map(Number)
         const monthName = dateFormat(new Date(year, month - 1), 'MMMM', { locale: es })
         
@@ -313,7 +302,7 @@ const Reportes = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Atenciones</p>
-                  <p className="text-3xl font-bold text-medical-blue">{selectedProfesional === 'todos' ? reporteData.total_atenciones : atencionesActivas.length}</p>
+                  <p className="text-3xl font-bold text-medical-blue">{selectedProfesional === 'todos' ? reporteData.total_atenciones : atenciones.length}</p>
                 </div>
                 <div className="bg-medical-blue text-white rounded-full p-3">
                   <FileText className="h-6 w-6" />
@@ -326,7 +315,7 @@ const Reportes = () => {
                 <div>
                   <p className="text-sm font-medium text-gray-600">Ingresos Totales</p>
                   <p className="text-3xl font-bold text-green-600">
-                    {formatCLP(selectedProfesional === 'todos' ? reporteData.ingresos_totales : sumFinancialAmounts(atencionesFacturables))}
+                    {formatCLP(selectedProfesional === 'todos' ? reporteData.ingresos_totales : atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0))}
                   </p>
                 </div>
                 <div className="bg-green-600 text-white rounded-full p-3">
@@ -340,7 +329,7 @@ const Reportes = () => {
                 <div>
                   <p className="text-sm font-medium text-gray-600">Pagos a Profesionales</p>
                   <p className="text-3xl font-bold text-orange-600">
-                    {formatCLP(selectedProfesional === 'todos' ? reporteData.total_pagado_profesionales : atencionesFacturables.reduce((sum, a) => sum + calcularPagoProfesional(a), 0))}
+                    {formatCLP(selectedProfesional === 'todos' ? reporteData.total_pagado_profesionales : atenciones.reduce((sum, a) => sum + calcularPagoProfesional(a), 0))}
                   </p>
                 </div>
                 <div className="bg-orange-600 text-white rounded-full p-3">
@@ -358,7 +347,7 @@ const Reportes = () => {
                   </p>
                   <p className="text-3xl font-bold text-purple-600">
                     {formatCLP(selectedProfesional === 'todos' ? reporteData.utilidad_neta : 
-                      (sumFinancialAmounts(atencionesFacturables) - atencionesFacturables.reduce((sum, a) => sum + calcularPagoProfesional(a), 0))
+                      (atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0) - atenciones.reduce((sum, a) => sum + calcularPagoProfesional(a), 0))
                     )}
                   </p>
                 </div>
@@ -538,7 +527,7 @@ const Reportes = () => {
           })()}
         </h2>
         
-        {atencionesActivas.length === 0 ? (
+        {atenciones.length === 0 ? (
           <div className="text-center py-8">
             <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500">No hay atenciones registradas para este mes</p>
@@ -572,7 +561,7 @@ const Reportes = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {atencionesActivas.map(atencion => (
+                {atenciones.map(atencion => (
                   <tr key={atencion.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {dateFormat(parseISO(atencion.fecha), 'dd/MM/yyyy')} {atencion.hora}

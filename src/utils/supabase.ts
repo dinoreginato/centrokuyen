@@ -1,7 +1,22 @@
 import { supabase } from '@/lib/supabase'
 export { supabase }
-import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, CentroConfig, Usuario, Sucursal, ProfesionalComision, ProfesionalDisponibilidad } from '@/types/database'
-import { isActiveClinicalAtencion, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
+import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision } from '@/types/database'
+
+const applyCentroFilter = <T>(query: T, centroId?: string | null) => {
+  if (!centroId) return query
+  return (query as any).eq('centro_id', centroId)
+}
+
+const mapCentroToConfig = (centro: Centro): CentroConfig => ({
+  id: centro.id,
+  nombre: centro.nombre,
+  direccion: centro.direccion || '',
+  telefono: centro.telefono || '',
+  cuit: centro.cuit || '',
+  logo_url: centro.logo_url || '',
+  created_at: centro.created_at,
+  updated_at: centro.updated_at
+})
 
 // Helper for audit logging
 export const auditService = {
@@ -29,14 +44,15 @@ export const auditService = {
 
 // Servicios para Profesionales
 export const profesionalesService = {
-  async getAll(sucursalId?: string): Promise<Profesional[]> {
+  async getAll(sucursalId?: string, centroId?: string): Promise<Profesional[]> {
     let query = supabase
       .from('profesionales')
       .select('*')
       .order('nombre')
+
+    query = applyCentroFilter(query, centroId)
     
     if (sucursalId) {
-      // Mostrar profesionales de la sucursal O globales (null)
       query = query.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
     }
 
@@ -92,12 +108,14 @@ export const profesionalesService = {
 
 // Servicios para Pacientes
 export const pacientesService = {
-  async getAll(sucursalId?: string): Promise<Paciente[]> {
+  async getAll(sucursalId?: string, centroId?: string): Promise<Paciente[]> {
     let query = supabase
       .from('pacientes')
       .select('*')
       .eq('activo', true)
       .order('nombre')
+
+    query = applyCentroFilter(query, centroId)
 
     if (sucursalId) {
       query = query.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
@@ -152,20 +170,13 @@ export const pacientesService = {
       .eq('id', id)
     
     if (error) throw error;
-
-    const { error: atencionesError } = await supabase
-      .from('atenciones')
-      .update({ activo: false })
-      .eq('paciente_id', id)
-
-    if (atencionesError) throw atencionesError
     if (oldData) await auditService.logAction('pacientes', id, 'SOFT_DELETE', oldData);
   }
 }
 
 // Servicios para Atenciones
 export const atencionesService = {
-  async getAll(sucursalId?: string): Promise<Atencion[]> {
+  async getAll(sucursalId?: string, centroId?: string): Promise<Atencion[]> {
     let query = supabase
       .from('atenciones')
       .select(`
@@ -176,6 +187,8 @@ export const atencionesService = {
       `)
       .eq('activo', true)
       .order('fecha', { ascending: false })
+
+    query = applyCentroFilter(query, centroId)
 
     if (sucursalId) {
       query = query.eq('sucursal_id', sucursalId)
@@ -203,7 +216,7 @@ export const atencionesService = {
     return data
   },
 
-  async getByDateRange(startDate: string, endDate: string, sucursalId?: string): Promise<Atencion[]> {
+  async getByDateRange(startDate: string, endDate: string, sucursalId?: string, centroId?: string): Promise<Atencion[]> {
     let query = supabase
       .from('atenciones')
       .select(`
@@ -217,6 +230,8 @@ export const atencionesService = {
       .lte('fecha', endDate)
       .order('fecha', { ascending: false })
 
+    query = applyCentroFilter(query, centroId)
+
     if (sucursalId) {
       query = query.eq('sucursal_id', sucursalId)
     }
@@ -227,57 +242,7 @@ export const atencionesService = {
     return data || []
   },
 
-  async getByProfesionalAndFecha(profesionalId: string, fecha: string, sucursalId?: string): Promise<Atencion[]> {
-    let query = supabase
-      .from('atenciones')
-      .select(`
-        *,
-        profesional:profesionales(*),
-        paciente:pacientes(*),
-        tipos_atencion(*)
-      `)
-      .eq('activo', true)
-      .eq('profesional_id', profesionalId)
-      .eq('fecha', fecha)
-      .order('hora', { ascending: true })
-
-    if (sucursalId) {
-      query = query.eq('sucursal_id', sucursalId)
-    }
-
-    const { data, error } = await query
-
-    if (error) throw error
-    return data || []
-  },
-
-  async getByProfesionalAndDateRange(profesionalId: string, startDate: string, endDate: string, sucursalId?: string): Promise<Atencion[]> {
-    let query = supabase
-      .from('atenciones')
-      .select(`
-        *,
-        profesional:profesionales(*),
-        paciente:pacientes(*),
-        tipos_atencion(*)
-      `)
-      .eq('activo', true)
-      .eq('profesional_id', profesionalId)
-      .gte('fecha', startDate)
-      .lte('fecha', endDate)
-      .order('fecha', { ascending: true })
-      .order('hora', { ascending: true })
-
-    if (sucursalId) {
-      query = query.eq('sucursal_id', sucursalId)
-    }
-
-    const { data, error } = await query
-
-    if (error) throw error
-    return data || []
-  },
-
-  async getPendientes(sucursalId?: string): Promise<Atencion[]> {
+  async getPendientes(sucursalId?: string, centroId?: string): Promise<Atencion[]> {
     let query = supabase
       .from('atenciones')
       .select(`
@@ -290,6 +255,8 @@ export const atencionesService = {
       .eq('pagado', false)
       .order('fecha', { ascending: true })
 
+    query = applyCentroFilter(query, centroId)
+
     if (sucursalId) {
       query = query.eq('sucursal_id', sucursalId)
     }
@@ -300,7 +267,7 @@ export const atencionesService = {
     return data || []
   },
 
-  async getByPacienteId(pacienteId: string, sucursalId?: string, profesionalId?: string): Promise<Atencion[]> {
+  async getByPacienteId(pacienteId: string, sucursalId?: string, profesionalId?: string, centroId?: string): Promise<Atencion[]> {
     let query = supabase
       .from('atenciones')
       .select(`
@@ -314,12 +281,42 @@ export const atencionesService = {
       .order('fecha', { ascending: false })
       .order('hora', { ascending: false })
 
+    query = applyCentroFilter(query, centroId)
+
     if (sucursalId) {
       query = query.eq('sucursal_id', sucursalId)
     }
 
     if (profesionalId) {
       query = query.eq('profesional_id', profesionalId)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+    return data || []
+  },
+
+  async getByProfesionalAndDateRange(profesionalId: string, startDate: string, endDate: string, sucursalId?: string, centroId?: string): Promise<Atencion[]> {
+    let query = supabase
+      .from('atenciones')
+      .select(`
+        *,
+        profesional:profesionales(*),
+        paciente:pacientes(*),
+        tipos_atencion(*)
+      `)
+      .eq('activo', true)
+      .eq('profesional_id', profesionalId)
+      .gte('fecha', startDate)
+      .lte('fecha', endDate)
+      .order('fecha', { ascending: true })
+      .order('hora', { ascending: true })
+
+    query = applyCentroFilter(query, centroId)
+
+    if (sucursalId) {
+      query = query.eq('sucursal_id', sucursalId)
     }
 
     const { data, error } = await query
@@ -364,65 +361,48 @@ export const atencionesService = {
   }
 }
 
-export const profesionalDisponibilidadService = {
-  async getByProfesionalId(profesionalId: string, sucursalId: string): Promise<ProfesionalDisponibilidad[]> {
-    const { data, error } = await supabase
-      .from('profesional_disponibilidad')
-      .select('*')
-      .eq('profesional_id', profesionalId)
-      .eq('sucursal_id', sucursalId)
-      .order('dia_semana', { ascending: true })
-      .order('hora_inicio', { ascending: true })
-
-    if (error) throw error
-    return data || []
-  },
-
-  async replaceSchedule(profesionalId: string, sucursalId: string, items: Omit<ProfesionalDisponibilidad, 'id' | 'created_at' | 'updated_at'>[]): Promise<void> {
-    const { error: deleteError } = await supabase
-      .from('profesional_disponibilidad')
-      .delete()
-      .eq('profesional_id', profesionalId)
-      .eq('sucursal_id', sucursalId)
-
-    if (deleteError) throw deleteError
-
-    if (items.length === 0) return
-
-    const { error: insertError } = await supabase
-      .from('profesional_disponibilidad')
-      .insert(items)
-
-    if (insertError) throw insertError
-  }
-}
-
 // Servicios para Costos
 export const costosService = {
-  async getAll(): Promise<Costo[]> {
-    const { data, error } = await supabase
+  async getAll(sucursalId?: string, centroId?: string): Promise<Costo[]> {
+    let query = supabase
       .from('costos')
       .select('*')
       .eq('activo', true)
       .order('fecha', { ascending: false })
+
+    query = applyCentroFilter(query, centroId)
+
+    if (sucursalId) {
+      query = query.eq('sucursal_id', sucursalId)
+    }
+
+    const { data, error } = await query
     
     if (error) throw error
     return data || []
   },
 
-  async getByTipo(tipo: 'fijo' | 'variable' | 'aporte'): Promise<Costo[]> {
-    const { data, error } = await supabase
+  async getByTipo(tipo: 'fijo' | 'variable' | 'aporte', sucursalId?: string, centroId?: string): Promise<Costo[]> {
+    let query = supabase
       .from('costos')
       .select('*')
       .eq('activo', true)
       .eq('tipo', tipo)
       .order('fecha', { ascending: false })
+
+    query = applyCentroFilter(query, centroId)
+
+    if (sucursalId) {
+      query = query.eq('sucursal_id', sucursalId)
+    }
+
+    const { data, error } = await query
     
     if (error) throw error
     return data || []
   },
 
-  async getByDateRange(startDate: string, endDate: string, sucursalId?: string): Promise<Costo[]> {
+  async getByDateRange(startDate: string, endDate: string, sucursalId?: string, centroId?: string): Promise<Costo[]> {
     let query = supabase
       .from('costos')
       .select('*')
@@ -430,6 +410,8 @@ export const costosService = {
       .gte('fecha', startDate)
       .lte('fecha', endDate)
       .order('fecha', { ascending: false })
+
+    query = applyCentroFilter(query, centroId)
 
     if (sucursalId) {
       query = query.eq('sucursal_id', sucursalId)
@@ -476,12 +458,14 @@ export const costosService = {
 
 // Servicios para Tipos de Atención
 export const tiposAtencionService = {
-  async getAll(sucursalId?: string): Promise<TipoAtencion[]> {
+  async getAll(sucursalId?: string, centroId?: string): Promise<TipoAtencion[]> {
     let query = supabase
       .from('tipos_atencion')
       .select('*')
       .eq('activo', true)
       .order('nombre')
+
+    query = applyCentroFilter(query, centroId)
 
     if (sucursalId) {
       query = query.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
@@ -493,11 +477,13 @@ export const tiposAtencionService = {
     return data || []
   },
 
-  async getAllAdmin(sucursalId?: string): Promise<TipoAtencion[]> {
+  async getAllAdmin(sucursalId?: string, centroId?: string): Promise<TipoAtencion[]> {
     let query = supabase
       .from('tipos_atencion')
       .select('*')
       .order('nombre')
+
+    query = applyCentroFilter(query, centroId)
 
     if (sucursalId) {
       query = query.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
@@ -557,19 +543,16 @@ export const tiposAtencionService = {
 
 // Servicios de Reportes
 export const reportesService = {
-  async getReporteMensual(anio: number, mes: number, sucursalId?: string): Promise<ReporteMensual> {
+  async getReporteMensual(anio: number, mes: number, sucursalId?: string, centroId?: string): Promise<ReporteMensual> {
     const lastDay = new Date(anio, mes, 0).getDate()
     const startDate = `${anio}-${mes.toString().padStart(2, '0')}-01`
     const endDate = `${anio}-${mes.toString().padStart(2, '0')}-${lastDay}`
 
     // Obtener atenciones del mes
-    const atenciones = await atencionesService.getByDateRange(startDate, endDate, sucursalId)
+    const atenciones = await atencionesService.getByDateRange(startDate, endDate, sucursalId, centroId)
     
-    const atencionesActivas = atenciones.filter(isActiveClinicalAtencion)
-    const atencionesFacturables = atencionesActivas.filter(isBillableAtencion)
-
     // Obtener costos del mes
-    const costos = await costosService.getByDateRange(startDate, endDate, sucursalId)
+    const costos = await costosService.getByDateRange(startDate, endDate, sucursalId, centroId)
 
     // Obtener comisiones específicas (excepciones)
     const { data: comisionesData } = await supabase.from('profesional_comisiones').select('*')
@@ -583,13 +566,13 @@ export const reportesService = {
       .filter(c => c.tipo === 'variable')
       .reduce((sum, c) => sum + c.monto, 0)
 
-    const ingresosTotales = sumFinancialAmounts(atencionesFacturables)
-    const ingresosCobrados = atencionesFacturables
+    const ingresosTotales = atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0)
+    const ingresosCobrados = atenciones
       .filter(a => a.pagado)
       .reduce((sum, a) => sum + a.valor_cobrado, 0)
 
     // Calcular pagos a profesionales considerando excepciones
-    const totalPagadoProfesionales = atencionesFacturables.reduce((sum, a) => {
+    const totalPagadoProfesionales = atenciones.reduce((sum, a) => {
       if (a.profesional) {
         // Buscar regla específica para este profesional y tipo de atención
         const comisionEspecifica = comisiones.find(c => 
@@ -614,7 +597,7 @@ export const reportesService = {
 
     return {
       mes: startDate,
-      total_atenciones: atencionesActivas.length,
+      total_atenciones: atenciones.length,
       ingresos_totales: ingresosTotales,
       ingresos_cobrados: ingresosCobrados,
       total_pagado_profesionales: totalPagadoProfesionales,
@@ -626,9 +609,78 @@ export const reportesService = {
   }
 }
 
+// Servicios para Centros
+export const centrosService = {
+  async getAll(): Promise<Centro[]> {
+    const { data, error } = await supabase
+      .from('centros')
+      .select('*')
+      .eq('activo', true)
+      .order('nombre')
+
+    if (error) throw error
+    return data || []
+  },
+
+  async getById(id: string): Promise<Centro | null> {
+    const { data, error } = await supabase
+      .from('centros')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async create(centro: Omit<Centro, 'id' | 'created_at' | 'updated_at'>): Promise<Centro> {
+    const { data, error } = await supabase
+      .from('centros')
+      .insert([centro])
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async update(id: string, centro: Partial<Centro>): Promise<Centro> {
+    const { data, error } = await supabase
+      .from('centros')
+      .update(centro)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('centros')
+      .update({ activo: false })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+}
+
 // Servicios para Configuración del Centro
 export const centroConfigService = {
-  async getConfig(): Promise<CentroConfig | null> {
+  async getConfig(centroId?: string): Promise<CentroConfig | null> {
+    if (centroId) {
+      const centro = await centrosService.getById(centroId)
+      if (centro) {
+        return mapCentroToConfig(centro)
+      }
+    }
+
+    const centros = await centrosService.getAll()
+    if (centros.length > 0) {
+      return mapCentroToConfig(centros[0])
+    }
+
     const { data, error } = await supabase
       .from('centro_config')
       .select('*')
@@ -673,7 +725,11 @@ export const usuariosService = {
   async getAll(): Promise<Usuario[]> {
     const { data, error } = await supabase
       .from('usuarios')
-      .select(`*, profesional:profesionales(*)`)
+      .select(`
+        *,
+        profesional:profesionales(*),
+        centro:centros(*)
+      `)
       .order('nombre')
     
     if (error) throw error
@@ -683,7 +739,11 @@ export const usuariosService = {
   async getById(id: string): Promise<Usuario | null> {
     const { data, error } = await supabase
       .from('usuarios')
-      .select(`*, profesional:profesionales(*)`)
+      .select(`
+        *,
+        profesional:profesionales(*),
+        centro:centros(*)
+      `)
       .eq('id', id)
       .single()
     
@@ -726,12 +786,16 @@ export const usuariosService = {
 
 // Servicios para Sucursales
 export const sucursalesService = {
-  async getAll(): Promise<Sucursal[]> {
-    const { data, error } = await supabase
+  async getAll(centroId?: string): Promise<Sucursal[]> {
+    let query = supabase
       .from('sucursales')
-      .select('*')
+      .select('*, centro:centros(*)')
       .eq('activo', true)
       .order('nombre')
+
+    query = applyCentroFilter(query, centroId)
+
+    const { data, error } = await query
     
     if (error) throw error
     return data || []

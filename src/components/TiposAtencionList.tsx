@@ -8,7 +8,7 @@ import { formatCLP } from '@/utils/currency'
 import TipoAtencionForm from './TipoAtencionForm'
 
 const TiposAtencionList = () => {
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const [tipos, setTipos] = useState<TipoAtencion[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -21,7 +21,7 @@ const TiposAtencionList = () => {
   const loadTipos = async () => {
     try {
       setLoading(true)
-      const data = await tiposAtencionService.getAllAdmin(currentSucursal?.id)
+      const data = await tiposAtencionService.getAllAdmin(currentSucursal?.id, currentCentro?.id)
       setTipos(data)
     } catch (error) {
       toast.error('Error al cargar tipos de atención')

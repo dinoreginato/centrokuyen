@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
@@ -14,7 +15,6 @@ import Agenda from '@/components/Agenda'
 import AtencionForm from '@/components/AtencionForm'
 import AtencionesPorPaciente from '@/components/AtencionesPorPaciente'
 import Disponibilidad from '@/components/Disponibilidad'
-import CajaDiaria from '@/components/CajaDiaria'
 import TiposAtencionList from '@/components/TiposAtencionList'
 import TipoAtencionForm from '@/components/TipoAtencionForm'
 import Reportes from '@/components/Reportes'
@@ -78,17 +78,21 @@ const PacienteRoute = ({ children }: { children: React.ReactNode }) => {
 // Main App Content
 const AppContent = () => {
   const { isAuthenticated } = useAuth()
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   
   if (!isAuthenticated) {
     return <Login />
   }
   
   return (
-    <div className="flex min-h-screen bg-medical-light">
-      <Navigation />
-      <div className="flex-1 flex flex-col">
-        <Header />
-        <main className="flex-1 p-6 overflow-y-auto">
+    <div className="min-h-screen bg-medical-light lg:flex">
+      <Navigation
+        mobileOpen={isMobileNavOpen}
+        onClose={() => setIsMobileNavOpen(false)}
+      />
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        <Header onMenuToggle={() => setIsMobileNavOpen(true)} />
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <Routes>
             <Route path="/" element={<Dashboard />} />
             
@@ -114,7 +118,6 @@ const AppContent = () => {
             <Route path="/agenda/:id" element={<AtencionForm />} />
             <Route path="/atenciones-por-paciente" element={<StaffRoute><AtencionesPorPaciente /></StaffRoute>} />
             <Route path="/disponibilidad" element={<StaffRoute><Disponibilidad /></StaffRoute>} />
-            <Route path="/caja-diaria" element={<AdminRoute><CajaDiaria /></AdminRoute>} />
           </Routes>
         </main>
       </div>

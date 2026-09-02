@@ -18,7 +18,7 @@ interface TipoAtencionFormData {
 }
 
 export default function TipoAtencionForm({ tipo, onSuccess, onCancel }: TipoAtencionFormProps) {
-  const { currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal } = useSucursal()
   const { register, handleSubmit, formState: { errors } } = useForm<TipoAtencionFormData>({
     defaultValues: tipo ? {
       nombre: tipo.nombre,
@@ -49,6 +49,7 @@ export default function TipoAtencionForm({ tipo, onSuccess, onCancel }: TipoAten
       } else {
         await tiposAtencionService.create({
           ...dataToSend,
+          centro_id: currentCentro?.id || currentSucursal?.centro_id || null,
           sucursal_id: currentSucursal?.id
         });
         toast.success('Tipo de atención creado exitosamente');
