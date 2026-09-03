@@ -209,6 +209,157 @@ Gracias 🙌🏻`
     return edad >= 0 ? edad : null
   }
 
+  const renderAtencionCard = (atencion: Atencion, compact = false) => (
+    <div
+      key={atencion.id}
+      className={`relative rounded-md border shadow-sm transition-all hover:shadow-md ${
+        compact ? 'p-3 text-sm' : 'p-2 text-xs'
+      } ${getEstadoCitaCardClass(atencion.estado_cita, atencion.pagado, atencion.estado_asistencia)}`}
+    >
+      <div className="flex justify-between items-start mb-1.5">
+        <span className={`font-bold text-gray-700 bg-gray-100 rounded ${compact ? 'px-2 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]'}`}>
+          {atencion.hora.substring(0, 5)}
+        </span>
+        <div className="flex space-x-1">
+          {atencion.estado_asistencia === 'asistio' && (
+            <CheckCircle className={`${compact ? 'h-4 w-4' : 'h-3 w-3'} text-green-600`} />
+          )}
+          {atencion.estado_asistencia === 'no_asistio' && (
+            <XCircle className={`${compact ? 'h-4 w-4' : 'h-3 w-3'} text-red-600`} />
+          )}
+          {atencion.pagado && (
+            <DollarSign className={`${compact ? 'h-4 w-4' : 'h-3 w-3'} text-green-600`} />
+          )}
+        </div>
+      </div>
+
+      <div className="mb-2">
+        <div className={`font-semibold text-gray-900 truncate ${compact ? 'text-sm' : ''}`} title={atencion.paciente?.nombre}>
+          {atencion.es_bloqueo ? atencion.tipo_atencion : atencion.paciente?.nombre}
+        </div>
+
+        {(() => {
+          if (atencion.es_bloqueo) return null
+          const edad = getEdadPaciente(atencion)
+          return edad === null ? null : (
+            <div className={`text-gray-500 truncate mt-0.5 ${compact ? 'text-xs' : 'text-[10px]'}`}>
+              {edad} años
+            </div>
+          )
+        })()}
+        
+        {!user?.profesional_id && (
+          <div className={`text-gray-500 truncate mt-0.5 ${compact ? 'text-xs' : 'text-[10px]'}`}>
+            {atencion.profesional?.nombre}
+          </div>
+        )}
+        
+        <div className={`text-gray-500 truncate mt-0.5 ${compact ? 'text-xs' : 'text-[10px]'}`}>
+          {atencion.tipos_atencion?.nombre || atencion.tipo_atencion}
+        </div>
+
+        <div className="mt-1">
+          <span className={`inline-flex items-center rounded-full font-medium border ${getEstadoCitaBadgeClass(atencion.estado_cita)} ${compact ? 'px-2 py-0.5 text-xs' : 'px-2 py-0.5 text-[10px]'}`}>
+            {getEstadoCitaLabel(atencion.estado_cita)}
+          </span>
+        </div>
+
+        {atencion.numero_boleta && (
+          <div className={`text-gray-600 truncate mt-1 font-medium bg-gray-50 rounded inline-block ${compact ? 'px-2 py-1 text-xs' : 'px-1 py-0.5 text-[10px]'}`}>
+            Boleta: {atencion.numero_boleta}
+          </div>
+        )}
+      </div>
+
+      <div className={`flex flex-wrap justify-end items-center gap-1 pt-1.5 border-t border-gray-100 ${compact ? '' : 'md:opacity-0 group-hover:opacity-100 transition-opacity'}`}>
+        {!atencion.es_bloqueo && (
+          <>
+            <button
+              onClick={() => updateEstadoCita(atencion, 'confirmada')}
+              className={`p-1 rounded hover:bg-blue-50 ${atencion.estado_cita === 'confirmada' ? 'text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}
+              title="Confirmar cita"
+            >
+              <CalendarCheck2 className="h-4 w-4" />
+            </button>
+
+            <button
+              onClick={() => updateEstadoCita(atencion, 'cancelada')}
+              className={`p-1 rounded hover:bg-red-50 ${atencion.estado_cita === 'cancelada' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
+              title="Cancelar cita"
+            >
+              <CalendarX2 className="h-4 w-4" />
+            </button>
+
+            <Link
+              to={`/agenda/nueva?profesional_id=${atencion.profesional_id}&fecha=${atencion.fecha}&hora=${atencion.hora.substring(0, 5)}&paciente_id=${atencion.paciente_id || ''}&reagenda_id=${atencion.id}`}
+              className={`p-1 rounded hover:bg-purple-50 ${atencion.estado_cita === 'reagendada' ? 'text-purple-600' : 'text-gray-400 hover:text-purple-600'}`}
+              title="Reagendar cita"
+            >
+              <Repeat className="h-4 w-4" />
+            </Link>
+
+            <button
+              onClick={() => toggleAsistencia(atencion, 'asistio')}
+              className={`p-1 rounded hover:bg-green-50 ${atencion.estado_asistencia === 'asistio' ? 'text-green-600' : 'text-gray-400 hover:text-green-600'}`}
+              title="Asistió"
+            >
+              <CheckCircle className="h-4 w-4" />
+            </button>
+            
+            <button
+              onClick={() => toggleAsistencia(atencion, 'no_asistio')}
+              className={`p-1 rounded hover:bg-red-50 ${atencion.estado_asistencia === 'no_asistio' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
+              title="No Asistió"
+            >
+              <XCircle className="h-4 w-4" />
+            </button>
+          </>
+        )}
+
+        <button
+          onClick={() => {
+            const link = getWhatsAppLink(atencion)
+            if (link) window.open(link, '_blank')
+            else toast.error('Sin teléfono')
+          }}
+          className="p-1 rounded hover:bg-green-50 text-gray-400 hover:text-green-600"
+          title="WhatsApp"
+        >
+          <MessageCircle className="h-4 w-4" />
+        </button>
+
+        {user?.rol === 'admin' && (
+          <button
+            onClick={() => togglePago(atencion)}
+            className={`p-1 rounded hover:bg-yellow-50 ${atencion.pagado ? 'text-green-600' : 'text-gray-400 hover:text-yellow-600'}`}
+            title="Pago"
+          >
+            <DollarSign className="h-4 w-4" />
+          </button>
+        )}
+
+        {(user?.rol === 'admin' || (user?.rol === 'profesional' && user.profesional_id === atencion.profesional_id)) && (
+          <>
+            <Link
+              to={`/agenda/${atencion.id}`}
+              className="p-1 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-600"
+              title="Editar"
+            >
+              <Edit className="h-4 w-4" />
+            </Link>
+            <button
+              onClick={() => deleteAtencion(atencion.id)}
+              className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600"
+              title="Eliminar"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -290,7 +441,42 @@ Gracias 🙌🏻`
           </div>
         </div>
 
-        <div className="overflow-x-auto pb-4">
+        <div className="space-y-4 md:hidden">
+          {daysToShow.map((day) => {
+            const dayAppointments = atenciones
+              .filter((a) => isSameDay(parseISO(a.fecha), day))
+              .sort((a, b) => a.hora.localeCompare(b.hora))
+
+            const isCurrentMonth = viewMode === 'month' ? isSameMonth(day, currentMonth) : true
+
+            return (
+              <div key={`mobile-${day.toISOString()}`} className={`rounded-lg border ${!isCurrentMonth ? 'opacity-50' : 'border-gray-200'} overflow-hidden`}>
+                <div className={`px-4 py-3 border-b ${
+                  isSameDay(day, new Date())
+                    ? 'bg-blue-50 text-blue-800 border-blue-100'
+                    : 'bg-gray-50 text-gray-700 border-gray-100'
+                }`}>
+                  <div className="text-xs font-semibold uppercase tracking-wider">
+                    {dateFormat(day, 'EEEE', { locale: es })}
+                  </div>
+                  <div className="text-lg font-bold">
+                    {dateFormat(day, "d 'de' MMMM", { locale: es })}
+                  </div>
+                </div>
+
+                <div className="p-3 space-y-3 bg-gray-50/30">
+                  {dayAppointments.length === 0 ? (
+                    <p className="text-sm text-gray-400 italic text-center py-3">Sin citas</p>
+                  ) : (
+                    dayAppointments.map((atencion) => renderAtencionCard(atencion, true))
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto pb-4">
           <div className={`grid gap-3 ${viewMode === 'month' ? 'grid-cols-1 md:grid-cols-7 min-w-[1000px] md:min-w-0' : viewMode === 'week' ? 'grid-cols-1 md:grid-cols-7 min-w-[1000px] md:min-w-0' : 'grid-cols-1'}`}>
             {daysToShow.map((day) => {
               const dayAppointments = atenciones
@@ -320,156 +506,7 @@ Gracias 🙌🏻`
                         <p className="text-xs text-gray-400 italic">Sin citas</p>
                       </div>
                     ) : (
-                      dayAppointments.map((atencion) => (
-                        <div
-                          key={atencion.id}
-                          className={`relative p-2 rounded-md border text-xs shadow-sm transition-all hover:shadow-md group ${
-                            getEstadoCitaCardClass(atencion.estado_cita, atencion.pagado, atencion.estado_asistencia)
-                          }`}
-                        >
-                          <div className="flex justify-between items-start mb-1.5">
-                            <span className="font-bold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">
-                              {atencion.hora.substring(0, 5)}
-                            </span>
-                            <div className="flex space-x-1">
-                              {atencion.estado_asistencia === 'asistio' && (
-                                <CheckCircle className="h-3 w-3 text-green-600" />
-                              )}
-                              {atencion.estado_asistencia === 'no_asistio' && (
-                                <XCircle className="h-3 w-3 text-red-600" />
-                              )}
-                              {atencion.pagado && (
-                                <DollarSign className="h-3 w-3 text-green-600" />
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="mb-2">
-                            <div className="font-semibold text-gray-900 truncate" title={atencion.paciente?.nombre}>
-                              {atencion.es_bloqueo ? atencion.tipo_atencion : atencion.paciente?.nombre}
-                            </div>
-
-                            {(() => {
-                              if (atencion.es_bloqueo) return null
-                              const edad = getEdadPaciente(atencion)
-                              return edad === null ? null : (
-                                <div className="text-gray-500 truncate text-[10px] mt-0.5">
-                                  {edad} años
-                                </div>
-                              )
-                            })()}
-                            
-                            {!user?.profesional_id && (
-                              <div className="text-gray-500 truncate text-[10px] mt-0.5">
-                                {atencion.profesional?.nombre}
-                              </div>
-                            )}
-                            
-                            <div className="text-gray-500 truncate text-[10px] mt-0.5">
-                              {atencion.tipos_atencion?.nombre || atencion.tipo_atencion}
-                            </div>
-
-                            <div className="mt-1">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${getEstadoCitaBadgeClass(atencion.estado_cita)}`}>
-                                {getEstadoCitaLabel(atencion.estado_cita)}
-                              </span>
-                            </div>
-
-                            {atencion.numero_boleta && (
-                              <div className="text-gray-600 truncate text-[10px] mt-0.5 font-medium bg-gray-50 px-1 rounded inline-block">
-                                Boleta: {atencion.numero_boleta}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex justify-end items-center space-x-1 pt-1.5 border-t border-gray-100 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                            {!atencion.es_bloqueo && (
-                              <>
-                                <button
-                                  onClick={() => updateEstadoCita(atencion, 'confirmada')}
-                                  className={`p-1 rounded hover:bg-blue-50 ${atencion.estado_cita === 'confirmada' ? 'text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}
-                                  title="Confirmar cita"
-                                >
-                                  <CalendarCheck2 className="h-3 w-3" />
-                                </button>
-
-                                <button
-                                  onClick={() => updateEstadoCita(atencion, 'cancelada')}
-                                  className={`p-1 rounded hover:bg-red-50 ${atencion.estado_cita === 'cancelada' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
-                                  title="Cancelar cita"
-                                >
-                                  <CalendarX2 className="h-3 w-3" />
-                                </button>
-
-                                <Link
-                                  to={`/agenda/nueva?profesional_id=${atencion.profesional_id}&fecha=${atencion.fecha}&hora=${atencion.hora.substring(0, 5)}&paciente_id=${atencion.paciente_id || ''}&reagenda_id=${atencion.id}`}
-                                  className={`p-1 rounded hover:bg-purple-50 ${atencion.estado_cita === 'reagendada' ? 'text-purple-600' : 'text-gray-400 hover:text-purple-600'}`}
-                                  title="Reagendar cita"
-                                >
-                                  <Repeat className="h-3 w-3" />
-                                </Link>
-
-                                <button
-                                  onClick={() => toggleAsistencia(atencion, 'asistio')}
-                                  className={`p-1 rounded hover:bg-green-50 ${atencion.estado_asistencia === 'asistio' ? 'text-green-600' : 'text-gray-400 hover:text-green-600'}`}
-                                  title="Asistió"
-                                >
-                                  <CheckCircle className="h-3 w-3" />
-                                </button>
-                                
-                                <button
-                                  onClick={() => toggleAsistencia(atencion, 'no_asistio')}
-                                  className={`p-1 rounded hover:bg-red-50 ${atencion.estado_asistencia === 'no_asistio' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
-                                  title="No Asistió"
-                                >
-                                  <XCircle className="h-3 w-3" />
-                                </button>
-                              </>
-                            )}
-
-                            <button
-                              onClick={() => {
-                                const link = getWhatsAppLink(atencion)
-                                if (link) window.open(link, '_blank')
-                                else toast.error('Sin teléfono')
-                              }}
-                              className="p-1 rounded hover:bg-green-50 text-gray-400 hover:text-green-600"
-                              title="WhatsApp"
-                            >
-                              <MessageCircle className="h-3 w-3" />
-                            </button>
-
-                            {user?.rol === 'admin' && (
-                                <button
-                                  onClick={() => togglePago(atencion)}
-                                  className={`p-1 rounded hover:bg-yellow-50 ${atencion.pagado ? 'text-green-600' : 'text-gray-400 hover:text-yellow-600'}`}
-                                  title="Pago"
-                                >
-                                  <DollarSign className="h-3 w-3" />
-                                </button>
-                            )}
-
-                            {(user?.rol === 'admin' || (user?.rol === 'profesional' && user.profesional_id === atencion.profesional_id)) && (
-                              <>
-                                <Link
-                                  to={`/agenda/${atencion.id}`}
-                                  className="p-1 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-600"
-                                  title="Editar"
-                                >
-                                  <Edit className="h-3 w-3" />
-                                </Link>
-                                <button
-                                  onClick={() => deleteAtencion(atencion.id)}
-                                  className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600"
-                                  title="Eliminar"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      ))
+                      dayAppointments.map((atencion) => renderAtencionCard(atencion))
                     )}
                   </div>
                 </div>
