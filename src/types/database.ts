@@ -136,13 +136,14 @@ export interface CentroConfig {
 export interface Usuario {
   id: string
   email: string
-  password_hash: string
+  password_hash?: string | null
   nombre: string
   rol: 'admin' | 'profesional' | 'usuario'
   activo: boolean
   profesional_id?: string
+  auth_user_id?: string | null
   centro_id?: string | null
-  sucursal_id?: string
+  sucursal_id?: string | null
   created_at: string
   updated_at: string
   

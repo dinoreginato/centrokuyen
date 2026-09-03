@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { Session } from '@supabase/supabase-js'
 import { Usuario } from '@/types/database'
-import { usuariosService } from '@/utils/supabase'
+import { supabase, usuariosService } from '@/utils/supabase'
 
 interface AuthContextType {
   user: Usuario | null
   login: (email: string, password: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   loading: boolean
   isAuthenticated: boolean
   hasRole: (role: string) => boolean
@@ -30,108 +31,80 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Verificar si hay sesión activa al cargar
-    checkAuth()
+    let isMounted = true
+
+    const initializeAuth = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession()
+        if (error) throw error
+        if (!isMounted) return
+        await syncSessionUser(data.session)
+      } catch (error) {
+        console.error('Error checking auth:', error)
+        if (isMounted) {
+          setUser(null)
+        }
+      } finally {
+        if (isMounted) {
+          localStorage.removeItem('user')
+          setLoading(false)
+        }
+      }
+    }
+
+    initializeAuth()
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      void syncSessionUser(session)
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
-  const checkAuth = async () => {
-    try {
-      // Aquí iría la lógica para verificar el token/session
-      // Por ahora, simularemos que el usuario está guardado en localStorage
-      const savedUser = localStorage.getItem('user')
-      if (savedUser) {
-        setUser(JSON.parse(savedUser))
-      }
-    } catch (error) {
-      console.error('Error checking auth:', error)
-    } finally {
-      setLoading(false)
+  const syncSessionUser = async (session: Session | null) => {
+    if (!session?.user) {
+      setUser(null)
+      localStorage.removeItem('user')
+      return
     }
+
+    const profile = await usuariosService.getByAuthUserId(session.user.id)
+
+    if (!profile) {
+      await supabase.auth.signOut()
+      throw new Error('Tu cuenta no tiene un perfil activo en el sistema')
+    }
+
+    if (!profile.activo) {
+      await supabase.auth.signOut()
+      throw new Error('Usuario desactivado')
+    }
+
+    setUser(profile)
+    localStorage.removeItem('user')
   }
 
   const login = async (email: string, password: string) => {
-    try {
-      // Intentar buscar en la base de datos primero
-      try {
-        const usuarios = await usuariosService.getAll()
-        const dbUser = usuarios.find(u => u.email === email)
-        
-        if (dbUser) {
-          // Verificación simplificada de contraseña para el prototipo
-          // En producción usar bcrypt.compare(password, dbUser.password_hash)
-          if (password === 'admin123' || dbUser.password_hash === password) {
-            if (!dbUser.activo) throw new Error('Usuario desactivado')
-            setUser(dbUser)
-            localStorage.setItem('user', JSON.stringify(dbUser))
-            return
-          }
-        }
-      } catch (err) {
-        console.warn('No se pudo conectar con la base de datos de usuarios, usando fallback local', err)
-      }
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    })
 
-      // Usuarios de prueba hardcodeados (fallback)
-      const testUsers: Usuario[] = [
-        {
-          id: 'admin-001',
-          nombre: 'Administrador',
-          email: 'admin@centrokuyen.com',
-          password_hash: 'admin123',
-          rol: 'admin',
-          activo: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: 'user-001', 
-          nombre: 'Usuario Demo',
-          email: 'demo@centrokuyen.com',
-          password_hash: 'admin123',
-          rol: 'usuario',
-          activo: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: 'prof-demo',
-          nombre: 'Profesional Demo',
-          email: 'profesional@centrokuyen.com',
-          password_hash: 'admin123',
-          rol: 'profesional',
-          activo: true,
-          // ID vinculado al doctor creado en la migración 009
-          profesional_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }
-      ]
-
-      // Buscar usuario por email en fallback
-      const usuario = testUsers.find(u => u.email === email)
-      
-      if (!usuario) {
-        throw new Error('Usuario no encontrado')
-      }
-
-      if (!usuario.activo) {
-        throw new Error('Usuario desactivado')
-      }
-
-      // Verificar contraseña (simulado - en producción usar bcrypt)
-      if (password !== 'admin123') {
-        throw new Error('Contraseña incorrecta')
-      }
-
-      // Guardar usuario en estado y localStorage
-      setUser(usuario)
-      localStorage.setItem('user', JSON.stringify(usuario))
-      
-    } catch (error) {
-      throw error
+    if (error) {
+      throw new Error('Credenciales inválidas')
     }
+
+    await syncSessionUser(data.session)
   }
 
-  const logout = () => {
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
     setUser(null)
     localStorage.removeItem('user')
   }

@@ -772,64 +772,112 @@ export const centroConfigService = {
 }
 
 // Servicios para Usuarios
+type UsuarioUpsertInput = {
+  nombre: string
+  email: string
+  rol: Usuario['rol']
+  centro_id?: string | null
+  sucursal_id?: string | null
+  profesional_id?: string | null
+  activo?: boolean
+  password?: string
+}
+
+const usuarioSelect = `
+  id,
+  email,
+  nombre,
+  rol,
+  activo,
+  profesional_id,
+  auth_user_id,
+  centro_id,
+  sucursal_id,
+  created_at,
+  updated_at,
+  profesional:profesionales(*),
+  centro:centros(*)
+`
+
+const normalizeUsuario = (usuario: any): Usuario => ({
+  ...usuario,
+  profesional: Array.isArray(usuario?.profesional) ? usuario.profesional[0] || undefined : usuario?.profesional,
+  centro: Array.isArray(usuario?.centro) ? usuario.centro[0] || undefined : usuario?.centro
+})
+
 export const usuariosService = {
   async getAll(): Promise<Usuario[]> {
     const { data, error } = await supabase
       .from('usuarios')
-      .select(`
-        *,
-        profesional:profesionales(*),
-        centro:centros(*)
-      `)
+      .select(usuarioSelect)
       .order('nombre')
     
     if (error) throw error
-    return data || []
+    return (data || []).map(normalizeUsuario)
   },
 
   async getById(id: string): Promise<Usuario | null> {
     const { data, error } = await supabase
       .from('usuarios')
-      .select(`
-        *,
-        profesional:profesionales(*),
-        centro:centros(*)
-      `)
+      .select(usuarioSelect)
       .eq('id', id)
       .single()
     
     if (error) throw error
-    return data
+    return normalizeUsuario(data)
   },
 
-  async create(usuario: Omit<Usuario, 'id' | 'created_at' | 'updated_at'>): Promise<Usuario> {
+  async getByAuthUserId(authUserId: string): Promise<Usuario | null> {
     const { data, error } = await supabase
       .from('usuarios')
-      .insert([usuario])
-      .select()
-      .single()
-    
+      .select(usuarioSelect)
+      .eq('auth_user_id', authUserId)
+      .maybeSingle()
+
     if (error) throw error
-    return data
+    return data ? normalizeUsuario(data) : null
   },
 
-  async update(id: string, usuario: Partial<Usuario>): Promise<Usuario> {
-    const { data, error } = await supabase
-      .from('usuarios')
-      .update(usuario)
-      .eq('id', id)
-      .select()
-      .single()
-    
+  async create(usuario: UsuarioUpsertInput): Promise<Usuario> {
+    const { data, error } = await supabase.rpc('create_application_user', {
+      p_email: usuario.email,
+      p_password: usuario.password,
+      p_nombre: usuario.nombre,
+      p_rol: usuario.rol,
+      p_centro_id: usuario.centro_id || null,
+      p_sucursal_id: usuario.sucursal_id || null,
+      p_profesional_id: usuario.profesional_id || null
+    })
+
     if (error) throw error
-    return data
+    const createdUser = await this.getById(data)
+    if (!createdUser) throw new Error('No se pudo recuperar el usuario creado')
+    return createdUser
+  },
+
+  async update(id: string, usuario: Partial<UsuarioUpsertInput>): Promise<Usuario> {
+    const { error } = await supabase.rpc('update_application_user', {
+      p_usuario_id: id,
+      p_email: usuario.email,
+      p_password: usuario.password,
+      p_nombre: usuario.nombre,
+      p_rol: usuario.rol,
+      p_centro_id: usuario.centro_id ?? null,
+      p_sucursal_id: usuario.sucursal_id ?? null,
+      p_profesional_id: usuario.profesional_id ?? null,
+      p_activo: usuario.activo
+    })
+
+    if (error) throw error
+    const updatedUser = await this.getById(id)
+    if (!updatedUser) throw new Error('No se pudo recuperar el usuario actualizado')
+    return updatedUser
   },
 
   async delete(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('usuarios')
-      .delete()
-      .eq('id', id)
+    const { error } = await supabase.rpc('delete_application_user', {
+      p_usuario_id: id
+    })
     
     if (error) throw error
   }

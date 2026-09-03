@@ -130,7 +130,15 @@ export default function UsuariosList() {
     }
 
     try {
-      const dataToSave: any = {
+      const dataToSave: {
+        nombre: string
+        email: string
+        rol: 'admin' | 'profesional' | 'usuario'
+        centro_id: string | null
+        sucursal_id: string | null
+        profesional_id: string | null
+        password?: string
+      } = {
         nombre: formData.nombre,
         email: formData.email,
         rol: formData.rol,
@@ -141,7 +149,7 @@ export default function UsuariosList() {
 
       // Solo enviar password si se escribió algo (para editar)
       if (formData.password) {
-        dataToSave.password_hash = formData.password // En producción usar hash real
+        dataToSave.password = formData.password
       }
 
       if (editingId) {
@@ -155,7 +163,8 @@ export default function UsuariosList() {
       setShowForm(false)
       loadData()
     } catch (error) {
-      toast.error('Error al guardar usuario')
+      const message = error instanceof Error ? error.message : 'Error al guardar usuario'
+      toast.error(message)
       console.error(error)
     }
   }
@@ -171,7 +180,7 @@ export default function UsuariosList() {
     }
   }
 
-  const getSucursalName = (id?: string) => {
+  const getSucursalName = (id?: string | null) => {
     return sucursales.find(s => s.id === id)?.nombre || 'Sin sucursal'
   }
 
