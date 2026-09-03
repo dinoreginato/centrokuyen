@@ -10,10 +10,13 @@ import { Atencion, Paciente } from '@/types/database'
 import { atencionesService, pacientesService } from '@/utils/supabase'
 import { formatCLP } from '@/utils/currency'
 import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
+import { canManageAtencion, hasPermission } from '@/utils/permissions'
 
 const AtencionesPorPaciente = () => {
   const { user } = useAuth()
   const { currentCentro, currentSucursal } = useSucursal()
+  const canManagePagos = hasPermission(user, 'managePagos')
+  const canViewFinancialFields = hasPermission(user, 'viewFinancialFields')
 
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [loadingPacientes, setLoadingPacientes] = useState(true)
@@ -61,7 +64,7 @@ const AtencionesPorPaciente = () => {
   }
 
   const togglePago = async (atencion: Atencion) => {
-    if (user?.rol !== 'admin') return
+    if (!canManagePagos) return
 
     const estadoCita = atencion.estado_cita || 'por_confirmar'
     if (estadoCita === 'cancelada' || estadoCita === 'reagendada') {
@@ -202,9 +205,13 @@ const AtencionesPorPaciente = () => {
                   )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cita</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pago</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Boleta</th>
+                  {canViewFinancialFields && (
+                    <>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pago</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Boleta</th>
+                    </>
+                  )}
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
                 </tr>
               </thead>
@@ -230,25 +237,29 @@ const AtencionesPorPaciente = () => {
                         {getEstadoCitaLabel(atencion.estado_cita)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {formatCLP(atencion.valor_cobrado)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          atencion.pagado ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        {atencion.pagado ? 'Pagado' : 'Pendiente'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {atencion.numero_boleta || '-'}
-                    </td>
+                    {canViewFinancialFields && (
+                      <>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                          {formatCLP(atencion.valor_cobrado)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              atencion.pagado ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            <DollarSign className="h-3 w-3 mr-1" />
+                            {atencion.pagado ? 'Pagado' : 'Pendiente'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                          {atencion.numero_boleta || '-'}
+                        </td>
+                      </>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                       <div className="flex justify-end space-x-3">
-                        {user?.rol === 'admin' && (
+                        {canManagePagos && (
                           <button
                             onClick={() => togglePago(atencion)}
                             className="text-gray-600 hover:text-gray-900"
@@ -257,13 +268,15 @@ const AtencionesPorPaciente = () => {
                             <DollarSign className="h-4 w-4" />
                           </button>
                         )}
-                        <Link
-                          to={`/agenda/${atencion.id}`}
-                          className="text-blue-600 hover:text-blue-800"
-                          title="Ver / Editar"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Link>
+                        {canManageAtencion(user, atencion) && (
+                          <Link
+                            to={`/agenda/${atencion.id}`}
+                            className="text-blue-600 hover:text-blue-800"
+                            title="Ver / Editar"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Link>
+                        )}
                       </div>
                     </td>
                   </tr>

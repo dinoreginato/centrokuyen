@@ -9,6 +9,7 @@ import { atencionesService } from '@/utils/supabase'
 import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfMonth, endOfMonth, isSameMonth, differenceInYears } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { getEstadoCitaBadgeClass, getEstadoCitaCardClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
+import { canManageAtencion, hasPermission } from '@/utils/permissions'
 
 const Agenda = () => {
   const { user } = useAuth()
@@ -328,7 +329,7 @@ Gracias 🙌🏻`
           <MessageCircle className="h-4 w-4" />
         </button>
 
-        {user?.rol === 'admin' && (
+        {hasPermission(user, 'managePagos') && (
           <button
             onClick={() => togglePago(atencion)}
             className={`p-1 rounded hover:bg-yellow-50 ${atencion.pagado ? 'text-green-600' : 'text-gray-400 hover:text-yellow-600'}`}
@@ -338,7 +339,7 @@ Gracias 🙌🏻`
           </button>
         )}
 
-        {(user?.rol === 'admin' || (user?.rol === 'profesional' && user.profesional_id === atencion.profesional_id)) && (
+        {canManageAtencion(user, atencion) && (
           <>
             <Link
               to={`/agenda/${atencion.id}`}
@@ -373,7 +374,7 @@ Gracias 🙌🏻`
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">Agenda de Atenciones</h1>
         <div className="flex space-x-3">
-          {user?.rol === 'admin' && (
+          {hasPermission(user, 'manageTiposAtencion') && (
             <Link
               to="/tipos-atencion"
               className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"

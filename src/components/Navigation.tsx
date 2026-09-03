@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { X, Home, Users, UserPlus, Calendar, FileText, DollarSign, Settings, Activity, Shield, CreditCard, Search, Clock, Building2, MapPin } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
+import { hasPermission } from '@/utils/permissions'
 
 interface NavigationProps {
   mobileOpen?: boolean
@@ -12,27 +13,25 @@ const Navigation = ({ mobileOpen = false, onClose }: NavigationProps) => {
   const location = useLocation()
   const { user } = useAuth()
   const { currentCentro, currentSucursal } = useSucursal()
-  const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
   const nombreCentro = currentCentro?.nombre || 'Sistema Clínico'
   const logoUrl = currentCentro?.logo_url || null
 
   const navItems = [
-    { path: '/', icon: Home, label: 'Dashboard', roles: ['admin', 'profesional', 'usuario'] },
-    { path: '/profesionales', icon: Users, label: 'Profesionales', roles: ['admin'] },
-    { path: '/pacientes', icon: UserPlus, label: 'Pacientes', roles: isDalcahue ? ['admin', 'profesional'] : ['admin'] },
-    { path: '/agenda', icon: Calendar, label: 'Agenda', roles: ['admin', 'profesional', 'usuario'] },
-    { path: '/atenciones-por-paciente', icon: Search, label: 'Atenciones', roles: ['admin', 'profesional'] },
-    { path: '/disponibilidad', icon: Clock, label: 'Disponibilidad', roles: ['admin', 'profesional'] },
-    { path: '/pagos-pendientes', icon: CreditCard, label: 'Pagos Pendientes', roles: ['admin'] },
-    { path: '/reportes', icon: FileText, label: 'Reportes', roles: ['admin'] },
-    { path: '/costos', icon: DollarSign, label: 'Costos', roles: ['admin'] },
-    { path: '/usuarios', icon: Shield, label: 'Usuarios', roles: ['admin'] },
-    { path: '/configuracion', icon: Settings, label: 'Configuración', roles: ['admin'] },
+    { path: '/', icon: Home, label: 'Dashboard', permission: 'viewDashboard' as const },
+    { path: '/profesionales', icon: Users, label: 'Profesionales', permission: 'manageProfesionales' as const },
+    { path: '/pacientes', icon: UserPlus, label: 'Pacientes', permission: 'viewPacientes' as const },
+    { path: '/agenda', icon: Calendar, label: 'Agenda', permission: 'viewAgenda' as const },
+    { path: '/atenciones-por-paciente', icon: Search, label: 'Atenciones', permission: 'viewPatientHistory' as const },
+    { path: '/disponibilidad', icon: Clock, label: 'Disponibilidad', permission: 'viewDisponibilidad' as const },
+    { path: '/pagos-pendientes', icon: CreditCard, label: 'Pagos Pendientes', permission: 'managePagos' as const },
+    { path: '/reportes', icon: FileText, label: 'Reportes', permission: 'viewReportes' as const },
+    { path: '/costos', icon: DollarSign, label: 'Costos', permission: 'viewCostos' as const },
+    { path: '/usuarios', icon: Shield, label: 'Usuarios', permission: 'manageUsuarios' as const },
+    { path: '/configuracion', icon: Settings, label: 'Configuración', permission: 'manageConfiguracion' as const },
   ]
 
   const filteredItems = navItems.filter(item => {
-    if (!user) return false
-    return item.roles.includes(user.rol)
+    return hasPermission(user, item.permission)
   })
 
   const navContent = (

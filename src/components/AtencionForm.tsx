@@ -8,6 +8,7 @@ import { Profesional, Paciente, TipoAtencion, Atencion } from '@/types/database'
 import { atencionesService, profesionalesService, pacientesService, tiposAtencionService } from '@/utils/supabase'
 import { addWeeks, format, parseISO } from 'date-fns'
 import { ESTADO_CITA_OPTIONS, getEstadoCitaLabel } from '@/utils/atencionEstado'
+import { hasPermission } from '@/utils/permissions'
 
 type EstadoCita = NonNullable<Atencion['estado_cita']>
 type TipoBloqueo = NonNullable<Atencion['tipo_bloqueo']>
@@ -49,9 +50,8 @@ const AtencionForm = () => {
   const { user } = useAuth()
   const isEditing = !!id
   const reagendaId = !isEditing ? new URLSearchParams(location.search).get('reagenda_id') : null
-  
-  // Ocultar precios para profesionales en Rengo
-  const esProfesionalEnRengo = user?.rol === 'profesional' && currentSucursal?.nombre?.toLowerCase().includes('rengo')
+  const canViewFinancialFields = hasPermission(user, 'viewFinancialFields')
+  const canSelectAnyProfessional = hasPermission(user, 'selectAnyProfessional')
 
   const [profesionales, setProfesionales] = useState<Profesional[]>([])
   const [pacientes, setPacientes] = useState<Paciente[]>([])
@@ -102,13 +102,13 @@ const AtencionForm = () => {
 
     setFormData(prev => ({
       ...prev,
-      profesional_id: (user?.rol === 'profesional' ? prev.profesional_id : (profesionalId || prev.profesional_id)),
+      profesional_id: canSelectAnyProfessional ? (profesionalId || prev.profesional_id) : prev.profesional_id,
       fecha: fecha || prev.fecha,
       hora: hora || prev.hora,
       paciente_id: pacienteId || prev.paciente_id,
       es_bloqueo: esBloqueo || prev.es_bloqueo
     }))
-  }, [location.search, isEditing, user?.rol])
+  }, [canSelectAnyProfessional, location.search, isEditing])
 
   // Sincronizar nombre del paciente cuando cargan los datos o se edita
   useEffect(() => {
@@ -130,7 +130,7 @@ const AtencionForm = () => {
       ])
 
       let filteredProfesionales = profesionalesData
-      if (user?.rol === 'profesional' && user.profesional_id) {
+      if (!canSelectAnyProfessional && user?.profesional_id) {
         filteredProfesionales = profesionalesData.filter(p => p.id === user.profesional_id)
         // Preseleccionar si es nueva atención
         if (!isEditing) {
@@ -424,7 +424,7 @@ const AtencionForm = () => {
                 onChange={handleChange}
                 className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue disabled:bg-gray-100 disabled:cursor-not-allowed"
                 required
-                disabled={user?.rol === 'profesional'}
+                disabled={!canSelectAnyProfessional}
               >
                 <option value="">Seleccione un profesional</option>
                 {profesionales.map(profesional => (
@@ -557,7 +557,7 @@ const AtencionForm = () => {
                 <option value="">Seleccione un tipo</option>
                 {tiposAtencion.map(tipo => (
                   <option key={tipo.id} value={tipo.id}>
-                    {tipo.nombre} {esProfesionalEnRengo ? '' : `- $${tipo.valor_base}`}
+                    {tipo.nombre} {canViewFinancialFields ? `- $${tipo.valor_base}` : ''}
                   </option>
                 ))}
               </select>
@@ -576,7 +576,7 @@ const AtencionForm = () => {
             </div>
           )}
 
-          {!esProfesionalEnRengo && !isBloqueoMode && (
+          {canViewFinancialFields && !isBloqueoMode && (
             <div>
               <label htmlFor="valor_cobrado" className="block text-sm font-medium text-gray-700 mb-2">
                 Valor Cobrado *
@@ -675,7 +675,7 @@ const AtencionForm = () => {
           </div>
         )}
 
-        {!esProfesionalEnRengo && !isBloqueoMode && (
+        {canViewFinancialFields && !isBloqueoMode && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex flex-col justify-center">
               <div className="flex items-center">

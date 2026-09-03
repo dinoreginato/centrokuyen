@@ -10,6 +10,7 @@ import { es } from 'date-fns/locale'
 import DashboardCharts from './DashboardCharts'
 import { autoNotificationService, notificationService } from '@/utils/notifications'
 import { formatCLP } from '@/utils/currency'
+import { hasPermission } from '@/utils/permissions'
 
 interface DashboardStatCardProps {
   title: string
@@ -126,9 +127,6 @@ const Dashboard = () => {
 
       // Determine filters based on role
       const isProfesional = user?.rol === 'profesional' && user.profesional_id
-      const esProfesionalEnRengoActual = Boolean(
-        isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
-      )
       
       let filteredAtenciones = atenciones
       if (isProfesional) {
@@ -185,9 +183,7 @@ const Dashboard = () => {
           }
 
           ingresosMes = calcularGananciaProfesional(atencionesPagadasMes)
-          gananciasAcumuladas = esProfesionalEnRengoActual
-            ? calcularGananciaProfesional(atencionesPagadasHistoricas)
-            : ingresosMes
+          gananciasAcumuladas = calcularGananciaProfesional(atencionesPagadasHistoricas)
         }
       } else {
         // Para admin, sumamos el total cobrado de las atenciones pagadas
@@ -236,14 +232,11 @@ const Dashboard = () => {
   }
 
   const isProfesional = user?.rol === 'profesional'
-  const esProfesionalEnRengo = isProfesional && currentSucursal?.nombre?.toLowerCase().includes('rengo')
-  const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
-  const canManagePacientes = !isProfesional || (isProfesional && isDalcahue)
-  const professionalIncomeTitle = esProfesionalEnRengo ? 'Mis Ganancias Acumuladas' : 'Mis Ganancias'
-  const professionalIncomeValue = esProfesionalEnRengo ? stats.gananciasAcumuladas : stats.ingresosMes
-  const professionalIncomeSubtitle = esProfesionalEnRengo
-    ? 'Total cobrado como profesional'
-    : 'Total cobrado del mes'
+  const canManagePacientes = hasPermission(user, 'managePacientes')
+  const canViewFinancialMetrics = hasPermission(user, 'viewFinancialMetrics')
+  const professionalIncomeTitle = 'Mis Ganancias del Mes'
+  const professionalIncomeValue = stats.ingresosMes
+  const professionalIncomeSubtitle = 'Total cobrado del mes'
 
   return (
     <div className="space-y-6">
@@ -308,7 +301,7 @@ const Dashboard = () => {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          {!isProfesional && (
+          {hasPermission(user, 'manageProfesionales') && (
             <Link
               to="/profesionales/nuevo"
               className="group rounded-2xl border border-gray-100 bg-gray-50/80 p-4 transition-all hover:-translate-y-0.5 hover:border-medical-blue/20 hover:bg-white hover:shadow-sm"
@@ -345,7 +338,7 @@ const Dashboard = () => {
             <p className="mt-1 text-xs text-gray-500">Agendar una nueva sesión o control.</p>
           </Link>
 
-          {!isProfesional && (
+          {hasPermission(user, 'viewReportes') && (
               <Link
                 to="/reportes"
                 className="group rounded-2xl border border-gray-100 bg-gray-50/80 p-4 transition-all hover:-translate-y-0.5 hover:border-purple-200 hover:bg-white hover:shadow-sm"
@@ -444,7 +437,7 @@ const Dashboard = () => {
         </div>
 
         <div className="space-y-4">
-          {!esProfesionalEnRengo && stats.atencionesPendientes > 0 && (
+          {canViewFinancialMetrics && stats.atencionesPendientes > 0 && (
             <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-5 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 flex-shrink-0 rounded-full bg-yellow-100 p-2">
@@ -476,7 +469,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {!esProfesionalEnRengo && (
+      {canViewFinancialMetrics && (
         <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
           <div className="mb-5 flex items-center">
             <BarChart3 className="h-6 w-6 text-medical-blue mr-2" />

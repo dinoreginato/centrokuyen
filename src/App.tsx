@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
-import { SucursalProvider, useSucursal } from '@/contexts/SucursalContext'
+import { SucursalProvider } from '@/contexts/SucursalContext'
 import Navigation from '@/components/Navigation'
 import Header from '@/components/Header'
 import Login from '@/components/Login'
@@ -22,27 +22,19 @@ import PagosPendientes from '@/components/PagosPendientes'
 import Costos from '@/components/Costos'
 import Configuracion from '@/components/Configuracion'
 import UsuariosList from '@/components/UsuariosList'
+import { AppPermission, hasPermission } from '@/utils/permissions'
 import '@/utils/seedConsole' // Importar el script de datos de prueba
 import './App.css'
 
-// Admin Route Component
-const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+const PermissionRoute = ({
+  children,
+  permission
+}: {
+  children: React.ReactNode
+  permission: AppPermission
+}) => {
   const { user, loading } = useAuth()
-  
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
-  }
-  
-  return user?.rol === 'admin' ? <>{children}</> : <Navigate to="/" replace />
-}
 
-const StaffRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth()
-  
   if (loading) {
     return (
       <div className="flex justify-center items-center h-full">
@@ -50,29 +42,8 @@ const StaffRoute = ({ children }: { children: React.ReactNode }) => {
       </div>
     )
   }
-  
-  const isAuthorized = user?.rol === 'admin' || user?.rol === 'profesional'
-  
-  return isAuthorized ? <>{children}</> : <Navigate to="/" replace />
-}
 
-// Paciente Route Component (Admins OR Dalcahue Professionals)
-const PacienteRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth()
-  const { currentSucursal } = useSucursal()
-  
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
-  }
-  
-  const isDalcahue = currentSucursal?.nombre?.toLowerCase().includes('dalcahue')
-  const isAuthorized = user?.rol === 'admin' || (user?.rol === 'profesional' && isDalcahue)
-  
-  return isAuthorized ? <>{children}</> : <Navigate to="/" replace />
+  return hasPermission(user, permission) ? <>{children}</> : <Navigate to="/" replace />
 }
 
 // Main App Content
@@ -97,27 +68,27 @@ const AppContent = () => {
             <Route path="/" element={<Dashboard />} />
             
             {/* Rutas exclusivas Admin */}
-            <Route path="/profesionales" element={<AdminRoute><ProfesionalesList /></AdminRoute>} />
-            <Route path="/profesionales/nuevo" element={<AdminRoute><ProfesionalForm /></AdminRoute>} />
-            <Route path="/profesionales/:id" element={<AdminRoute><ProfesionalForm /></AdminRoute>} />
-            <Route path="/pacientes" element={<PacienteRoute><PacientesList /></PacienteRoute>} />
-            <Route path="/pacientes/nuevo" element={<PacienteRoute><PacienteForm /></PacienteRoute>} />
-            <Route path="/pacientes/:id" element={<PacienteRoute><PacienteForm /></PacienteRoute>} />
-            <Route path="/tipos-atencion" element={<AdminRoute><TiposAtencionList /></AdminRoute>} />
-            <Route path="/tipos-atencion/nuevo" element={<AdminRoute><TipoAtencionFormWrapper /></AdminRoute>} />
-            <Route path="/tipos-atencion/:id" element={<AdminRoute><TipoAtencionFormWrapper /></AdminRoute>} />
-            <Route path="/pagos-pendientes" element={<AdminRoute><PagosPendientes /></AdminRoute>} />
-            <Route path="/reportes" element={<AdminRoute><Reportes /></AdminRoute>} />
-            <Route path="/costos" element={<AdminRoute><Costos /></AdminRoute>} />
-            <Route path="/usuarios" element={<AdminRoute><UsuariosList /></AdminRoute>} />
-            <Route path="/configuracion" element={<AdminRoute><Configuracion /></AdminRoute>} />
+            <Route path="/profesionales" element={<PermissionRoute permission="manageProfesionales"><ProfesionalesList /></PermissionRoute>} />
+            <Route path="/profesionales/nuevo" element={<PermissionRoute permission="manageProfesionales"><ProfesionalForm /></PermissionRoute>} />
+            <Route path="/profesionales/:id" element={<PermissionRoute permission="manageProfesionales"><ProfesionalForm /></PermissionRoute>} />
+            <Route path="/pacientes" element={<PermissionRoute permission="viewPacientes"><PacientesList /></PermissionRoute>} />
+            <Route path="/pacientes/nuevo" element={<PermissionRoute permission="managePacientes"><PacienteForm /></PermissionRoute>} />
+            <Route path="/pacientes/:id" element={<PermissionRoute permission="managePacientes"><PacienteForm /></PermissionRoute>} />
+            <Route path="/tipos-atencion" element={<PermissionRoute permission="manageTiposAtencion"><TiposAtencionList /></PermissionRoute>} />
+            <Route path="/tipos-atencion/nuevo" element={<PermissionRoute permission="manageTiposAtencion"><TipoAtencionFormWrapper /></PermissionRoute>} />
+            <Route path="/tipos-atencion/:id" element={<PermissionRoute permission="manageTiposAtencion"><TipoAtencionFormWrapper /></PermissionRoute>} />
+            <Route path="/pagos-pendientes" element={<PermissionRoute permission="managePagos"><PagosPendientes /></PermissionRoute>} />
+            <Route path="/reportes" element={<PermissionRoute permission="viewReportes"><Reportes /></PermissionRoute>} />
+            <Route path="/costos" element={<PermissionRoute permission="viewCostos"><Costos /></PermissionRoute>} />
+            <Route path="/usuarios" element={<PermissionRoute permission="manageUsuarios"><UsuariosList /></PermissionRoute>} />
+            <Route path="/configuracion" element={<PermissionRoute permission="manageConfiguracion"><Configuracion /></PermissionRoute>} />
             
             {/* Rutas compartidas */}
             <Route path="/agenda" element={<Agenda />} />
-            <Route path="/agenda/nueva" element={<AtencionForm />} />
-            <Route path="/agenda/:id" element={<AtencionForm />} />
-            <Route path="/atenciones-por-paciente" element={<StaffRoute><AtencionesPorPaciente /></StaffRoute>} />
-            <Route path="/disponibilidad" element={<StaffRoute><Disponibilidad /></StaffRoute>} />
+            <Route path="/agenda/nueva" element={<PermissionRoute permission="createAgenda"><AtencionForm /></PermissionRoute>} />
+            <Route path="/agenda/:id" element={<PermissionRoute permission="createAgenda"><AtencionForm /></PermissionRoute>} />
+            <Route path="/atenciones-por-paciente" element={<PermissionRoute permission="viewPatientHistory"><AtencionesPorPaciente /></PermissionRoute>} />
+            <Route path="/disponibilidad" element={<PermissionRoute permission="viewDisponibilidad"><Disponibilidad /></PermissionRoute>} />
           </Routes>
         </main>
       </div>

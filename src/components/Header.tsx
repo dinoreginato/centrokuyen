@@ -6,6 +6,7 @@ import { useSucursal } from '@/contexts/SucursalContext'
 import Notifications from '@/components/Notifications'
 import { Atencion } from '@/types/database'
 import { atencionesService } from '@/utils/supabase'
+import { getRoleLabel } from '@/utils/permissions'
 
 interface HeaderProps {
   onMenuToggle: () => void
@@ -154,7 +155,7 @@ const Header = ({ onMenuToggle }: HeaderProps) => {
                 </div>
                 <div className="hidden text-left sm:block">
                   <p className="text-sm font-medium text-gray-900">{user?.nombre}</p>
-                  <p className="text-xs text-gray-500 capitalize">{user?.rol}</p>
+                  <p className="text-xs text-gray-500">{getRoleLabel(user)}</p>
                 </div>
                 <ChevronDown className="hidden h-4 w-4 text-gray-400 sm:block" />
               </button>

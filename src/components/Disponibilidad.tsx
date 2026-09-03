@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion, Profesional } from '@/types/database'
 import { atencionesService, profesionalesService } from '@/utils/supabase'
+import { hasPermission } from '@/utils/permissions'
 
 const START_HOUR = 8
 const END_HOUR = 21
@@ -22,6 +23,7 @@ const timeToMinutes = (time: string) => {
 const Disponibilidad = () => {
   const { user } = useAuth()
   const { currentCentro, currentSucursal } = useSucursal()
+  const canSelectAnyProfessional = hasPermission(user, 'selectAnyProfessional')
 
   const [profesionales, setProfesionales] = useState<Profesional[]>([])
   const [loadingProfesionales, setLoadingProfesionales] = useState(true)
@@ -139,7 +141,7 @@ const Disponibilidad = () => {
                 value={selectedProfesionalId}
                 onChange={(e) => setSelectedProfesionalId(e.target.value)}
                 className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue disabled:bg-gray-100 disabled:cursor-not-allowed"
-                disabled={user?.rol === 'profesional'}
+                disabled={!canSelectAnyProfessional}
               >
                 {profesionales.map(p => (
                   <option key={p.id} value={p.id}>
