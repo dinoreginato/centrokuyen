@@ -16,6 +16,20 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
+ALTER TABLE public.audit_logs
+  ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+  ADD COLUMN IF NOT EXISTS changed_by_usuario_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS actor_name TEXT,
+  ADD COLUMN IF NOT EXISTS actor_email TEXT,
+  ADD COLUMN IF NOT EXISTS actor_role TEXT,
+  ADD COLUMN IF NOT EXISTS centro_id UUID REFERENCES public.centros(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS sucursal_id UUID REFERENCES public.sucursales(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now());
+
+UPDATE public.audit_logs
+SET metadata = '{}'::jsonb
+WHERE metadata IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON public.audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_table_name ON public.audit_logs(table_name);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_record_id ON public.audit_logs(record_id);
