@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Edit, Trash2, Settings, MessageCircle, DollarSign, CheckCircle, XCircle } from 'lucide-react'
+import { Plus, Edit, Trash2, Settings, MessageCircle, DollarSign, CheckCircle, XCircle, CalendarCheck2, CalendarX2, Repeat } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
@@ -8,6 +8,7 @@ import { Atencion } from '@/types/database'
 import { atencionesService } from '@/utils/supabase'
 import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfMonth, endOfMonth, isSameMonth, differenceInYears } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { getEstadoCitaBadgeClass, getEstadoCitaCardClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 
 const Agenda = () => {
   const { user } = useAuth()
@@ -66,6 +67,13 @@ const Agenda = () => {
   }
 
   const toggleAsistencia = async (atencion: Atencion, nuevoEstado: 'asistio' | 'no_asistio') => {
+    const estadoCita = atencion.estado_cita || 'por_confirmar'
+
+    if (estadoCita === 'cancelada' || estadoCita === 'reagendada') {
+      toast.error(`No puedes registrar asistencia en una cita ${getEstadoCitaLabel(estadoCita).toLowerCase()}`)
+      return
+    }
+
     try {
       const estadoFinal = atencion.estado_asistencia === nuevoEstado ? 'pendiente' : nuevoEstado
       
@@ -93,6 +101,13 @@ const Agenda = () => {
   }
 
   const togglePago = async (atencion: Atencion) => {
+    const estadoCita = atencion.estado_cita || 'por_confirmar'
+
+    if (estadoCita === 'cancelada' || estadoCita === 'reagendada') {
+      toast.error(`No puedes marcar pago en una cita ${getEstadoCitaLabel(estadoCita).toLowerCase()}`)
+      return
+    }
+
     try {
       const nuevoEstado = !atencion.pagado
       await atencionesService.update(atencion.id, { pagado: nuevoEstado })
@@ -101,6 +116,22 @@ const Agenda = () => {
     } catch (error) {
       toast.error('Error al actualizar estado de pago')
       console.error('Error toggling payment:', error)
+    }
+  }
+
+  const updateEstadoCita = async (atencion: Atencion, nuevoEstado: NonNullable<Atencion['estado_cita']>) => {
+    if (atencion.es_bloqueo) {
+      toast.error('Los bloques no clínicos no usan este flujo de estados')
+      return
+    }
+
+    try {
+      await atencionesService.updateEstadoCita(atencion.id, nuevoEstado)
+      toast.success(`Cita marcada como ${getEstadoCitaLabel(nuevoEstado).toLowerCase()}`)
+      loadData()
+    } catch (error) {
+      toast.error('Error al actualizar el estado de la cita')
+      console.error('Error updating appointment status:', error)
     }
   }
 
@@ -293,9 +324,7 @@ Gracias 🙌🏻`
                         <div
                           key={atencion.id}
                           className={`relative p-2 rounded-md border text-xs shadow-sm transition-all hover:shadow-md group ${
-                            atencion.estado_asistencia === 'no_asistio' ? 'bg-red-50 border-red-100' :
-                            atencion.pagado ? 'bg-green-50 border-green-100' : 
-                            'bg-white border-gray-200 hover:border-blue-300'
+                            getEstadoCitaCardClass(atencion.estado_cita, atencion.pagado, atencion.estado_asistencia)
                           }`}
                         >
                           <div className="flex justify-between items-start mb-1.5">
@@ -317,10 +346,11 @@ Gracias 🙌🏻`
 
                           <div className="mb-2">
                             <div className="font-semibold text-gray-900 truncate" title={atencion.paciente?.nombre}>
-                              {atencion.paciente?.nombre}
+                              {atencion.es_bloqueo ? atencion.tipo_atencion : atencion.paciente?.nombre}
                             </div>
 
                             {(() => {
+                              if (atencion.es_bloqueo) return null
                               const edad = getEdadPaciente(atencion)
                               return edad === null ? null : (
                                 <div className="text-gray-500 truncate text-[10px] mt-0.5">
@@ -336,7 +366,13 @@ Gracias 🙌🏻`
                             )}
                             
                             <div className="text-gray-500 truncate text-[10px] mt-0.5">
-                              {atencion.tipos_atencion?.nombre}
+                              {atencion.tipos_atencion?.nombre || atencion.tipo_atencion}
+                            </div>
+
+                            <div className="mt-1">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${getEstadoCitaBadgeClass(atencion.estado_cita)}`}>
+                                {getEstadoCitaLabel(atencion.estado_cita)}
+                              </span>
                             </div>
 
                             {atencion.numero_boleta && (
@@ -347,21 +383,49 @@ Gracias 🙌🏻`
                           </div>
 
                           <div className="flex justify-end items-center space-x-1 pt-1.5 border-t border-gray-100 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => toggleAsistencia(atencion, 'asistio')}
-                              className={`p-1 rounded hover:bg-green-50 ${atencion.estado_asistencia === 'asistio' ? 'text-green-600' : 'text-gray-400 hover:text-green-600'}`}
-                              title="Asistió"
-                            >
-                              <CheckCircle className="h-3 w-3" />
-                            </button>
-                            
-                            <button
-                              onClick={() => toggleAsistencia(atencion, 'no_asistio')}
-                              className={`p-1 rounded hover:bg-red-50 ${atencion.estado_asistencia === 'no_asistio' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
-                              title="No Asistió"
-                            >
-                              <XCircle className="h-3 w-3" />
-                            </button>
+                            {!atencion.es_bloqueo && (
+                              <>
+                                <button
+                                  onClick={() => updateEstadoCita(atencion, 'confirmada')}
+                                  className={`p-1 rounded hover:bg-blue-50 ${atencion.estado_cita === 'confirmada' ? 'text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}
+                                  title="Confirmar cita"
+                                >
+                                  <CalendarCheck2 className="h-3 w-3" />
+                                </button>
+
+                                <button
+                                  onClick={() => updateEstadoCita(atencion, 'cancelada')}
+                                  className={`p-1 rounded hover:bg-red-50 ${atencion.estado_cita === 'cancelada' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
+                                  title="Cancelar cita"
+                                >
+                                  <CalendarX2 className="h-3 w-3" />
+                                </button>
+
+                                <Link
+                                  to={`/agenda/nueva?profesional_id=${atencion.profesional_id}&fecha=${atencion.fecha}&hora=${atencion.hora.substring(0, 5)}&paciente_id=${atencion.paciente_id || ''}&reagenda_id=${atencion.id}`}
+                                  className={`p-1 rounded hover:bg-purple-50 ${atencion.estado_cita === 'reagendada' ? 'text-purple-600' : 'text-gray-400 hover:text-purple-600'}`}
+                                  title="Reagendar cita"
+                                >
+                                  <Repeat className="h-3 w-3" />
+                                </Link>
+
+                                <button
+                                  onClick={() => toggleAsistencia(atencion, 'asistio')}
+                                  className={`p-1 rounded hover:bg-green-50 ${atencion.estado_asistencia === 'asistio' ? 'text-green-600' : 'text-gray-400 hover:text-green-600'}`}
+                                  title="Asistió"
+                                >
+                                  <CheckCircle className="h-3 w-3" />
+                                </button>
+                                
+                                <button
+                                  onClick={() => toggleAsistencia(atencion, 'no_asistio')}
+                                  className={`p-1 rounded hover:bg-red-50 ${atencion.estado_asistencia === 'no_asistio' ? 'text-red-600' : 'text-gray-400 hover:text-red-600'}`}
+                                  title="No Asistió"
+                                >
+                                  <XCircle className="h-3 w-3" />
+                                </button>
+                              </>
+                            )}
 
                             <button
                               onClick={() => {

@@ -388,6 +388,24 @@ export const atencionesService = {
     return data
   },
 
+  async updateEstadoCita(id: string, estado_cita: NonNullable<Atencion['estado_cita']>): Promise<Atencion> {
+    const existing = await this.getById(id)
+
+    if (!existing) {
+      throw new Error('La atención que intentas actualizar no existe')
+    }
+
+    const updates: Partial<Atencion> = { estado_cita }
+
+    if (estado_cita === 'cancelada' || estado_cita === 'reagendada') {
+      updates.pagado = false
+      updates.estado_asistencia = 'pendiente'
+      updates.numero_boleta = ''
+    }
+
+    return this.update(id, updates)
+  },
+
   async update(id: string, atencion: Partial<Atencion>): Promise<Atencion> {
     const existing = await this.getById(id)
     if (!existing) {

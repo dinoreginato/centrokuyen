@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Profesional, Paciente, TipoAtencion, Atencion } from '@/types/database'
 import { atencionesService, profesionalesService, pacientesService, tiposAtencionService } from '@/utils/supabase'
 import { addWeeks, format, parseISO } from 'date-fns'
+import { ESTADO_CITA_OPTIONS, getEstadoCitaLabel } from '@/utils/atencionEstado'
 
 type EstadoCita = NonNullable<Atencion['estado_cita']>
 type TipoBloqueo = NonNullable<Atencion['tipo_bloqueo']>
@@ -18,13 +19,6 @@ const BLOQUEO_OPTIONS: Array<{ value: TipoBloqueo, label: string }> = [
   { value: 'licencia', label: 'Licencia' },
   { value: 'capacitacion', label: 'Capacitación' },
   { value: 'otro', label: 'Otro' }
-]
-
-const ESTADO_CITA_OPTIONS: Array<{ value: EstadoCita, label: string }> = [
-  { value: 'por_confirmar', label: 'Por confirmar' },
-  { value: 'confirmada', label: 'Confirmada' },
-  { value: 'cancelada', label: 'Cancelada' },
-  { value: 'reagendada', label: 'Reagendada' }
 ]
 
 const getBloqueoLabel = (tipo: TipoBloqueo) => {
@@ -54,6 +48,7 @@ const AtencionForm = () => {
   const { currentCentro, currentSucursal } = useSucursal()
   const { user } = useAuth()
   const isEditing = !!id
+  const reagendaId = !isEditing ? new URLSearchParams(location.search).get('reagenda_id') : null
   
   // Ocultar precios para profesionales en Rengo
   const esProfesionalEnRengo = user?.rol === 'profesional' && currentSucursal?.nombre?.toLowerCase().includes('rengo')
@@ -232,7 +227,15 @@ const AtencionForm = () => {
             numero_boleta: '',
             recurrencia: 1
           }
-        : formData
+        : {
+            ...formData,
+            pagado: formData.estado_cita === 'cancelada' || formData.estado_cita === 'reagendada'
+              ? false
+              : formData.pagado,
+            numero_boleta: formData.estado_cita === 'cancelada' || formData.estado_cita === 'reagendada'
+              ? ''
+              : formData.numero_boleta
+          }
 
       const dataToSave = {
         ...normalizedData,
@@ -268,9 +271,15 @@ const AtencionForm = () => {
           }
           
           await Promise.all(promesas)
+          if (reagendaId) {
+            await atencionesService.updateEstadoCita(reagendaId, 'reagendada')
+          }
           toast.success(`Se crearon ${sesiones} sesiones semanales exitosamente`)
         } else {
           await atencionesService.create(baseData)
+          if (reagendaId) {
+            await atencionesService.updateEstadoCita(reagendaId, 'reagendada')
+          }
           toast.success(formData.es_bloqueo ? 'Bloque creado exitosamente' : 'Atención creada exitosamente')
         }
       }
@@ -327,7 +336,8 @@ const AtencionForm = () => {
   const timeSlots = generateTimeSlots()
   const isBloqueoMode = formData.es_bloqueo
   const bloqueoLabel = getBloqueoLabel(formData.tipo_bloqueo)
-  const estadoBloqueoLabel = ESTADO_CITA_OPTIONS.find(option => option.value === formData.estado_cita)?.label || 'Confirmada'
+  const estadoBloqueoLabel = getEstadoCitaLabel(formData.estado_cita)
+  const citaInactiva = !isBloqueoMode && (formData.estado_cita === 'cancelada' || formData.estado_cita === 'reagendada')
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -344,6 +354,12 @@ const AtencionForm = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 space-y-6">
+        {reagendaId && !isEditing && !isBloqueoMode && (
+          <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 text-sm text-purple-900">
+            Al guardar esta nueva hora, la cita original quedará marcada como <strong>Reagendada</strong>.
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label htmlFor="es_bloqueo" className="block text-sm font-medium text-gray-700 mb-2">
@@ -595,6 +611,33 @@ const AtencionForm = () => {
               />
             </div>
           )}
+
+          {!isBloqueoMode && (
+            <div>
+              <label htmlFor="estado_cita" className="block text-sm font-medium text-gray-700 mb-2">
+                Estado de la cita
+              </label>
+              <select
+                id="estado_cita"
+                name="estado_cita"
+                value={formData.estado_cita}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+              >
+                {ESTADO_CITA_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {citaInactiva && (
+            <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Esta cita no se considerará activa para cobros ni seguimientos mientras esté marcada como <strong>{getEstadoCitaLabel(formData.estado_cita)}</strong>.
+            </div>
+          )}
         </div>
 
         <div>
@@ -642,6 +685,7 @@ const AtencionForm = () => {
                   name="pagado"
                   checked={formData.pagado}
                   onChange={handleChange}
+                  disabled={citaInactiva}
                   className="h-4 w-4 text-medical-blue focus:ring-medical-blue border-gray-300 rounded"
                 />
                 <label htmlFor="pagado" className="ml-2 block text-sm text-gray-900">
