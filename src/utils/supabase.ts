@@ -175,6 +175,56 @@ export const pacientesService = {
 }
 
 // Servicios para Atenciones
+const ATENCION_DURATION_MINUTES = 60
+
+const timeToMinutes = (time?: string | null) => {
+  const normalized = (time || '00:00').substring(0, 5)
+  const [hours, minutes] = normalized.split(':').map(value => parseInt(value || '0', 10))
+  return (hours * 60) + minutes
+}
+
+const validateAtencionOverlap = async (
+  atencion: Pick<Atencion, 'profesional_id' | 'fecha' | 'hora'> & Partial<Atencion>,
+  excludeId?: string
+) => {
+  if (!atencion.profesional_id || !atencion.fecha || !atencion.hora) {
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('atenciones')
+    .select('id, hora, paciente:pacientes(nombre), es_bloqueo, tipo_atencion')
+    .eq('activo', true)
+    .eq('profesional_id', atencion.profesional_id)
+    .eq('fecha', atencion.fecha)
+
+  if (error) throw error
+
+  const newStart = timeToMinutes(atencion.hora)
+  const newEnd = newStart + ATENCION_DURATION_MINUTES
+
+  const overlapping = (data || []).find(existing => {
+    if (excludeId && existing.id === excludeId) return false
+
+    const existingStart = timeToMinutes(existing.hora)
+    const existingEnd = existingStart + ATENCION_DURATION_MINUTES
+    return existingStart < newEnd && existingEnd > newStart
+  })
+
+  if (overlapping) {
+    const overlappingPaciente = (overlapping as any).paciente
+    const horaExistente = String(overlapping.hora || '').substring(0, 5)
+    const pacienteNombre = Array.isArray(overlappingPaciente)
+      ? overlappingPaciente[0]?.nombre
+      : overlappingPaciente?.nombre
+    const tipoExistente = overlapping.es_bloqueo
+      ? (overlapping.tipo_atencion || 'bloque no clínico')
+      : (pacienteNombre ? `la atención de ${pacienteNombre}` : 'otra atención')
+
+    throw new Error(`La profesional ya tiene ocupado ese horario a las ${horaExistente} con ${tipoExistente}. Puedes usar la misma hora solo en otra profesional.`)
+  }
+}
+
 export const atencionesService = {
   async getAll(sucursalId?: string, centroId?: string): Promise<Atencion[]> {
     let query = supabase
@@ -326,6 +376,8 @@ export const atencionesService = {
   },
 
   async create(atencion: Omit<Atencion, 'id' | 'created_at' | 'updated_at'>): Promise<Atencion> {
+    await validateAtencionOverlap(atencion)
+
     const { data, error } = await supabase
       .from('atenciones')
       .insert([atencion])
@@ -337,6 +389,19 @@ export const atencionesService = {
   },
 
   async update(id: string, atencion: Partial<Atencion>): Promise<Atencion> {
+    const existing = await this.getById(id)
+    if (!existing) {
+      throw new Error('La atención que intentas actualizar no existe')
+    }
+
+    await validateAtencionOverlap({
+      ...existing,
+      ...atencion,
+      profesional_id: atencion.profesional_id ?? existing.profesional_id,
+      fecha: atencion.fecha ?? existing.fecha,
+      hora: atencion.hora ?? existing.hora
+    }, id)
+
     const { data, error } = await supabase
       .from('atenciones')
       .update(atencion)
