@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Save, Building, Phone, CreditCard, Users, Plus, CheckCircle2, Pencil, Trash2 } from 'lucide-react'
+import { Save, Building, Phone, CreditCard, Users, Plus, CheckCircle2, Pencil, Trash2, History, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
-import { centrosService } from '@/utils/supabase'
+import { auditService, centrosService } from '@/utils/supabase'
+import { AuditLog } from '@/types/database'
 import SucursalesList from './SucursalesList'
 
 const Configuracion = () => {
@@ -12,6 +13,8 @@ const Configuracion = () => {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [creatingCentro, setCreatingCentro] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [loadingAudit, setLoadingAudit] = useState(true)
   const [formData, setFormData] = useState({
     nombre: '',
     direccion: '',
@@ -36,6 +39,22 @@ const Configuracion = () => {
 
     setLoading(false)
   }, [currentCentro, centros])
+
+  useEffect(() => {
+    loadAuditLogs()
+  }, [])
+
+  const loadAuditLogs = async () => {
+    try {
+      setLoadingAudit(true)
+      const logs = await auditService.getRecent(20)
+      setAuditLogs(logs)
+    } catch (error) {
+      console.error('Error loading audit logs:', error)
+    } finally {
+      setLoadingAudit(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -124,6 +143,48 @@ const Configuracion = () => {
       toast.error(message)
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const formatAuditAction = (log: AuditLog) => {
+    if (log.table_name === 'atenciones' && log.metadata?.estado_cita_nuevo) {
+      return `Cambio de estado a ${String(log.metadata.estado_cita_nuevo).replace('_', ' ')}`
+    }
+
+    switch (log.action) {
+      case 'INSERT':
+        return 'Creación'
+      case 'UPDATE':
+        return 'Edición'
+      case 'SOFT_DELETE':
+        return 'Eliminación lógica'
+      default:
+        return log.action
+    }
+  }
+
+  const formatAuditEntity = (log: AuditLog) => {
+    switch (log.table_name) {
+      case 'atenciones':
+        return 'Atención'
+      case 'pacientes':
+        return 'Paciente'
+      case 'profesionales':
+        return 'Profesional'
+      case 'costos':
+        return 'Costo'
+      case 'usuarios':
+        return 'Usuario'
+      case 'centros':
+        return 'Centro'
+      case 'sucursales':
+        return 'Sucursal'
+      case 'tipos_atencion':
+        return 'Tipo de atención'
+      case 'profesional_comisiones':
+        return 'Comisión profesional'
+      default:
+        return log.table_name
     }
   }
 
@@ -395,6 +456,67 @@ const Configuracion = () => {
             <p className="font-medium">Multi-centro, multi-sucursal y operación móvil</p>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center">
+            <History className="mr-2 h-6 w-6 text-slate-700" />
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">Bitácora Reciente</h2>
+              <p className="text-sm text-gray-500">Últimos cambios sensibles registrados en el sistema.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={loadAuditLogs}
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            disabled={loadingAudit}
+          >
+            <RefreshCw className={`h-4 w-4 ${loadingAudit ? 'animate-spin' : ''}`} />
+            <span>{loadingAudit ? 'Actualizando...' : 'Actualizar bitácora'}</span>
+          </button>
+        </div>
+
+        {loadingAudit ? (
+          <div className="flex justify-center py-8">
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-medical-blue"></div>
+          </div>
+        ) : auditLogs.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">
+            Todavía no hay eventos registrados en la bitácora.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {auditLogs.map(log => (
+              <div key={log.id} className="rounded-lg border border-gray-200 p-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {formatAuditEntity(log)}: {formatAuditAction(log)}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {log.actor_name || log.actor_email || 'Usuario desconocido'}
+                      {log.actor_role ? ` · ${log.actor_role}` : ''}
+                    </p>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {new Date(log.created_at).toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="mt-3 grid gap-2 text-sm text-gray-600 md:grid-cols-2">
+                  <p>Entidad: <span className="font-medium text-gray-800">{log.table_name}</span></p>
+                  <p>Registro: <span className="font-medium text-gray-800">{log.record_id}</span></p>
+                  {log.actor_email && <p>Email: <span className="font-medium text-gray-800">{log.actor_email}</span></p>}
+                  {log.metadata && Object.keys(log.metadata).length > 0 && (
+                    <p>Detalle: <span className="font-medium text-gray-800">{JSON.stringify(log.metadata)}</span></p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

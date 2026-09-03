@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 export { supabase }
-import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision } from '@/types/database'
+import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision, AuditLog } from '@/types/database'
 
 const applyCentroFilter = <T>(query: T, centroId?: string | null) => {
   if (!centroId) return query
@@ -19,26 +19,59 @@ const mapCentroToConfig = (centro: Centro): CentroConfig => ({
 })
 
 // Helper for audit logging
-export const auditService = {
-  async logAction(tableName: string, recordId: string, action: 'INSERT' | 'UPDATE' | 'SOFT_DELETE', oldData: any = null, newData: any = null) {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
-      
-      if (!userId) return;
+type AuditPayload = {
+  action: 'INSERT' | 'UPDATE' | 'SOFT_DELETE'
+  oldData?: unknown
+  newData?: unknown
+  metadata?: Record<string, unknown>
+  centroId?: string | null
+  sucursalId?: string | null
+}
 
-      await supabase.from('audit_logs').insert([{
+export const auditService = {
+  async logAction(tableName: string, recordId: string, payload: AuditPayload) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const authUserId = session?.user?.id
+
+      if (!authUserId) return
+
+      const actor = await usuariosService.getByAuthUserId(authUserId)
+      const actorCentroId = payload.centroId ?? actor?.centro_id ?? null
+      const actorSucursalId = payload.sucursalId ?? actor?.sucursal_id ?? null
+
+      const { error } = await supabase.from('audit_logs').insert([{
         table_name: tableName,
         record_id: recordId,
-        action: action,
-        old_data: oldData,
-        new_data: newData,
-        changed_by: userId
-      }]);
+        action: payload.action,
+        old_data: payload.oldData ?? null,
+        new_data: payload.newData ?? null,
+        metadata: payload.metadata ?? {},
+        changed_by: authUserId,
+        changed_by_usuario_id: actor?.id ?? null,
+        actor_name: actor?.nombre ?? session?.user?.user_metadata?.nombre ?? null,
+        actor_email: actor?.email ?? session?.user?.email ?? null,
+        actor_role: actor?.rol ?? null,
+        centro_id: actorCentroId,
+        sucursal_id: actorSucursalId
+      }])
+
+      if (error) throw error
     } catch (e) {
-      console.error('Failed to write audit log:', e);
+      console.error('Failed to write audit log:', e)
       // We don't throw here to avoid breaking the main flow if audit logging fails
     }
+  },
+
+  async getRecent(limit = 50): Promise<AuditLog[]> {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) throw error
+    return data || []
   }
 }
 
@@ -81,10 +114,17 @@ export const profesionalesService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('profesionales', data.id, {
+      action: 'INSERT',
+      newData: data,
+      centroId: data.centro_id ?? null,
+      sucursalId: data.sucursal_id ?? null
+    })
     return data
   },
 
   async update(id: string, profesional: Partial<Profesional>): Promise<Profesional> {
+    const oldData = await this.getById(id)
     const { data, error } = await supabase
       .from('profesionales')
       .update(profesional)
@@ -93,16 +133,32 @@ export const profesionalesService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('profesionales', id, {
+      action: 'UPDATE',
+      oldData,
+      newData: data,
+      centroId: data.centro_id ?? null,
+      sucursalId: data.sucursal_id ?? null
+    })
     return data
   },
 
   async delete(id: string): Promise<void> {
+    const oldData = await this.getById(id)
     const { error } = await supabase
       .from('profesionales')
       .delete()
       .eq('id', id)
     
     if (error) throw error
+    if (oldData) {
+      await auditService.logAction('profesionales', id, {
+        action: 'SOFT_DELETE',
+        oldData,
+        centroId: oldData.centro_id ?? null,
+        sucursalId: oldData.sucursal_id ?? null
+      })
+    }
   }
 }
 
@@ -146,10 +202,17 @@ export const pacientesService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('pacientes', data.id, {
+      action: 'INSERT',
+      newData: data,
+      centroId: data.centro_id ?? null,
+      sucursalId: data.sucursal_id ?? null
+    })
     return data
   },
 
   async update(id: string, paciente: Partial<Paciente>): Promise<Paciente> {
+    const oldData = await this.getById(id)
     const { data, error } = await supabase
       .from('pacientes')
       .update(paciente)
@@ -158,6 +221,13 @@ export const pacientesService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('pacientes', id, {
+      action: 'UPDATE',
+      oldData,
+      newData: data,
+      centroId: data.centro_id ?? null,
+      sucursalId: data.sucursal_id ?? null
+    })
     return data
   },
 
@@ -169,8 +239,15 @@ export const pacientesService = {
       .update({ activo: false })
       .eq('id', id)
     
-    if (error) throw error;
-    if (oldData) await auditService.logAction('pacientes', id, 'SOFT_DELETE', oldData);
+    if (error) throw error
+    if (oldData) {
+      await auditService.logAction('pacientes', id, {
+        action: 'SOFT_DELETE',
+        oldData,
+        centroId: oldData.centro_id ?? null,
+        sucursalId: oldData.sucursal_id ?? null
+      })
+    }
   }
 }
 
@@ -385,6 +462,13 @@ export const atencionesService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('atenciones', data.id, {
+      action: 'INSERT',
+      newData: data,
+      centroId: data.centro_id ?? null,
+      sucursalId: data.sucursal_id ?? null,
+      metadata: data.estado_cita ? { estado_cita: data.estado_cita } : undefined
+    })
     return data
   },
 
@@ -428,6 +512,27 @@ export const atencionesService = {
       .single()
     
     if (error) throw error
+    const metadata: Record<string, unknown> = {}
+    if (existing.estado_cita !== data.estado_cita) {
+      metadata.estado_cita_anterior = existing.estado_cita || 'por_confirmar'
+      metadata.estado_cita_nuevo = data.estado_cita || 'por_confirmar'
+    }
+    if (existing.pagado !== data.pagado) {
+      metadata.pagado_anterior = existing.pagado
+      metadata.pagado_nuevo = data.pagado
+    }
+    if (existing.estado_asistencia !== data.estado_asistencia) {
+      metadata.estado_asistencia_anterior = existing.estado_asistencia || 'pendiente'
+      metadata.estado_asistencia_nuevo = data.estado_asistencia || 'pendiente'
+    }
+    await auditService.logAction('atenciones', id, {
+      action: 'UPDATE',
+      oldData: existing,
+      newData: data,
+      centroId: data.centro_id ?? existing.centro_id ?? null,
+      sucursalId: data.sucursal_id ?? existing.sucursal_id ?? null,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined
+    })
     return data
   },
 
@@ -439,8 +544,19 @@ export const atencionesService = {
       .update({ activo: false })
       .eq('id', id)
     
-    if (error) throw error;
-    if (oldData) await auditService.logAction('atenciones', id, 'SOFT_DELETE', oldData);
+    if (error) throw error
+    if (oldData) {
+      await auditService.logAction('atenciones', id, {
+        action: 'SOFT_DELETE',
+        oldData,
+        centroId: oldData.centro_id ?? null,
+        sucursalId: oldData.sucursal_id ?? null,
+        metadata: {
+          estado_cita: oldData.estado_cita || 'por_confirmar',
+          es_bloqueo: oldData.es_bloqueo || false
+        }
+      })
+    }
   }
 }
 
@@ -514,10 +630,17 @@ export const costosService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('costos', data.id, {
+      action: 'INSERT',
+      newData: data,
+      centroId: data.centro_id ?? null,
+      sucursalId: data.sucursal_id ?? null
+    })
     return data
   },
 
   async update(id: string, costo: Partial<Costo>): Promise<Costo> {
+    const oldData = await supabase.from('costos').select('*').eq('id', id).single()
     const { data, error } = await supabase
       .from('costos')
       .update(costo)
@@ -526,16 +649,32 @@ export const costosService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('costos', id, {
+      action: 'UPDATE',
+      oldData: oldData.data ?? null,
+      newData: data,
+      centroId: data.centro_id ?? null,
+      sucursalId: data.sucursal_id ?? null
+    })
     return data
   },
 
   async delete(id: string): Promise<void> {
+    const oldData = await supabase.from('costos').select('*').eq('id', id).single()
     const { error } = await supabase
       .from('costos')
       .update({ activo: false })
       .eq('id', id)
     
     if (error) throw error
+    if (oldData.data) {
+      await auditService.logAction('costos', id, {
+        action: 'SOFT_DELETE',
+        oldData: oldData.data,
+        centroId: oldData.data.centro_id ?? null,
+        sucursalId: oldData.data.sucursal_id ?? null
+      })
+    }
   }
 }
 
@@ -597,10 +736,17 @@ export const tiposAtencionService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('tipos_atencion', result.id, {
+      action: 'INSERT',
+      newData: result,
+      centroId: result.centro_id ?? null,
+      sucursalId: result.sucursal_id ?? null
+    })
     return result
   },
 
   async update(id: string, data: Partial<TipoAtencion>): Promise<TipoAtencion> {
+    const oldData = await this.getById(id)
     const { data: result, error } = await supabase
       .from('tipos_atencion')
       .update(data)
@@ -609,18 +755,34 @@ export const tiposAtencionService = {
     
     if (error) throw error
     if (!result || result.length === 0) {
-      throw new Error('No se pudo actualizar: El registro no existe o no tienes permisos');
+      throw new Error('No se pudo actualizar: El registro no existe o no tienes permisos')
     }
+    await auditService.logAction('tipos_atencion', id, {
+      action: 'UPDATE',
+      oldData,
+      newData: result[0],
+      centroId: result[0].centro_id ?? null,
+      sucursalId: result[0].sucursal_id ?? null
+    })
     return result[0]
   },
 
   async delete(id: string): Promise<void> {
+    const oldData = await this.getById(id)
     const { error } = await supabase
       .from('tipos_atencion')
       .delete()
       .eq('id', id)
     
     if (error) throw error
+    if (oldData) {
+      await auditService.logAction('tipos_atencion', id, {
+        action: 'SOFT_DELETE',
+        oldData,
+        centroId: oldData.centro_id ?? null,
+        sucursalId: oldData.sucursal_id ?? null
+      })
+    }
   }
 }
 
@@ -758,10 +920,16 @@ export const centrosService = {
       .single()
 
     if (error) throw error
+    await auditService.logAction('centros', data.id, {
+      action: 'INSERT',
+      newData: data,
+      centroId: data.id
+    })
     return data
   },
 
   async update(id: string, centro: Partial<Centro>): Promise<Centro> {
+    const oldData = await this.getById(id)
     const { data, error } = await supabase
       .from('centros')
       .update(centro)
@@ -770,6 +938,12 @@ export const centrosService = {
       .single()
 
     if (error) throw error
+    await auditService.logAction('centros', id, {
+      action: 'UPDATE',
+      oldData,
+      newData: data,
+      centroId: data.id
+    })
     return data
   },
 
@@ -791,12 +965,21 @@ export const centrosService = {
       throw new Error(`No se puede eliminar el centro porque todavía tiene datos asociados: ${details}.`)
     }
 
+    const oldData = await this.getById(id)
     const { error } = await supabase
       .from('centros')
       .update({ activo: false })
       .eq('id', id)
 
     if (error) throw error
+    if (oldData) {
+      await auditService.logAction('centros', id, {
+        action: 'SOFT_DELETE',
+        oldData,
+        centroId: id,
+        metadata: usage
+      })
+    }
   }
 }
 
@@ -842,6 +1025,7 @@ export const centroConfigService = {
   },
 
   async update(id: string, config: Partial<CentroConfig>): Promise<CentroConfig> {
+    const oldData = await supabase.from('centro_config').select('*').eq('id', id).single()
     const { data, error } = await supabase
       .from('centro_config')
       .update(config)
@@ -850,6 +1034,12 @@ export const centroConfigService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('centro_config', id, {
+      action: 'UPDATE',
+      oldData: oldData.data ?? null,
+      newData: data,
+      centroId: data.id
+    })
     return data
   }
 }
@@ -935,10 +1125,17 @@ export const usuariosService = {
     if (error) throw error
     const createdUser = await this.getById(data)
     if (!createdUser) throw new Error('No se pudo recuperar el usuario creado')
+    await auditService.logAction('usuarios', createdUser.id, {
+      action: 'INSERT',
+      newData: createdUser,
+      centroId: createdUser.centro_id ?? null,
+      sucursalId: createdUser.sucursal_id ?? null
+    })
     return createdUser
   },
 
   async update(id: string, usuario: Partial<UsuarioUpsertInput>): Promise<Usuario> {
+    const oldData = await this.getById(id)
     const { error } = await supabase.rpc('update_application_user', {
       p_usuario_id: id,
       p_email: usuario.email,
@@ -954,15 +1151,31 @@ export const usuariosService = {
     if (error) throw error
     const updatedUser = await this.getById(id)
     if (!updatedUser) throw new Error('No se pudo recuperar el usuario actualizado')
+    await auditService.logAction('usuarios', id, {
+      action: 'UPDATE',
+      oldData,
+      newData: updatedUser,
+      centroId: updatedUser.centro_id ?? null,
+      sucursalId: updatedUser.sucursal_id ?? null
+    })
     return updatedUser
   },
 
   async delete(id: string): Promise<void> {
+    const oldData = await this.getById(id)
     const { error } = await supabase.rpc('delete_application_user', {
       p_usuario_id: id
     })
     
     if (error) throw error
+    if (oldData) {
+      await auditService.logAction('usuarios', id, {
+        action: 'SOFT_DELETE',
+        oldData,
+        centroId: oldData.centro_id ?? null,
+        sucursalId: oldData.sucursal_id ?? null
+      })
+    }
   }
 }
 
@@ -991,10 +1204,16 @@ export const sucursalesService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('sucursales', data.id, {
+      action: 'INSERT',
+      newData: data,
+      centroId: data.centro_id
+    })
     return data
   },
 
   async update(id: string, sucursal: Partial<Sucursal>): Promise<Sucursal> {
+    const oldData = await supabase.from('sucursales').select('*').eq('id', id).single()
     const { data, error } = await supabase
       .from('sucursales')
       .update(sucursal)
@@ -1003,17 +1222,31 @@ export const sucursalesService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('sucursales', id, {
+      action: 'UPDATE',
+      oldData: oldData.data ?? null,
+      newData: data,
+      centroId: data.centro_id
+    })
     return data
   },
 
   async delete(id: string): Promise<void> {
     // Soft delete
+    const oldData = await supabase.from('sucursales').select('*').eq('id', id).single()
     const { error } = await supabase
       .from('sucursales')
       .update({ activo: false })
       .eq('id', id)
     
     if (error) throw error
+    if (oldData.data) {
+      await auditService.logAction('sucursales', id, {
+        action: 'SOFT_DELETE',
+        oldData: oldData.data,
+        centroId: oldData.data.centro_id
+      })
+    }
   }
 }
 
@@ -1040,15 +1273,26 @@ export const profesionalComisionesService = {
       .single()
     
     if (error) throw error
+    await auditService.logAction('profesional_comisiones', data.id, {
+      action: 'INSERT',
+      newData: data
+    })
     return data
   },
 
   async delete(id: string): Promise<void> {
+    const oldData = await supabase.from('profesional_comisiones').select('*').eq('id', id).single()
     const { error } = await supabase
       .from('profesional_comisiones')
       .delete()
       .eq('id', id)
     
     if (error) throw error
+    if (oldData.data) {
+      await auditService.logAction('profesional_comisiones', id, {
+        action: 'SOFT_DELETE',
+        oldData: oldData.data
+      })
+    }
   }
 }

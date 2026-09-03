@@ -186,3 +186,21 @@ export interface ProfesionalComision {
   // Relaciones
   tipos_atencion?: TipoAtencion
 }
+
+export interface AuditLog {
+  id: string
+  table_name: string
+  record_id: string
+  action: string
+  old_data?: Record<string, unknown> | null
+  new_data?: Record<string, unknown> | null
+  metadata?: Record<string, unknown> | null
+  changed_by: string
+  changed_by_usuario_id?: string | null
+  actor_name?: string | null
+  actor_email?: string | null
+  actor_role?: Usuario['rol'] | null
+  centro_id?: string | null
+  sucursal_id?: string | null
+  created_at: string
+}
