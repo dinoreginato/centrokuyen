@@ -183,7 +183,64 @@ const Disponibilidad = () => {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="space-y-3 md:hidden">
+              {slotRows.map(({ slot, ocupada }) => (
+                <div key={slot} className="rounded-lg border border-gray-200 p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-gray-400" />
+                      <span className="font-semibold text-gray-900">{slot}</span>
+                    </div>
+                    {ocupada ? (
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                        Ocupado
+                      </span>
+                    ) : (
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                        Disponible
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-3">
+                    {ocupada ? (
+                      <div className="flex items-start gap-2 text-sm text-gray-700">
+                        <User className="h-4 w-4 text-gray-400 mt-0.5" />
+                        <div>
+                          <div className="font-medium">{ocupada.paciente?.nombre || 'Bloque sin paciente'}</div>
+                          <div className="text-xs text-gray-500">
+                            {ocupada.tipos_atencion?.nombre || ocupada.tipo_atencion || '-'}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500">Horario libre para agendar.</p>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex justify-end border-t border-gray-100 pt-3">
+                    {ocupada ? (
+                      <Link
+                        to={`/agenda/${ocupada.id}`}
+                        className="text-medical-blue hover:text-blue-700 font-medium text-sm"
+                      >
+                        Ver / editar
+                      </Link>
+                    ) : (
+                      <Link
+                        to={`/agenda/nueva?profesional_id=${encodeURIComponent(selectedProfesionalId)}&fecha=${encodeURIComponent(selectedDate)}&hora=${encodeURIComponent(slot)}`}
+                        className="inline-flex items-center px-3 py-1.5 border border-medical-blue text-medical-blue rounded-md hover:bg-medical-blue hover:text-white transition-colors text-sm"
+                      >
+                        Agendar
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -250,6 +307,7 @@ const Disponibilidad = () => {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </div>

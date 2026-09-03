@@ -212,7 +212,70 @@ const Costos = () => {
             <p className="text-gray-500">No hay costos registrados para este período</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="space-y-3 md:hidden">
+              {costos.map(costo => (
+                <div key={costo.id} className="rounded-lg border border-gray-200 p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {format(parseISO(costo.fecha), 'dd/MM/yyyy', { locale: es })}
+                      </p>
+                      <p className="text-sm text-gray-600">{costo.categoria}</p>
+                    </div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      costo.tipo === 'fijo'
+                        ? 'bg-blue-100 text-blue-800'
+                        : costo.tipo === 'variable'
+                        ? 'bg-orange-100 text-orange-800'
+                        : 'bg-green-100 text-green-800'
+                    }`}>
+                      {costo.tipo === 'fijo' ? 'Fijo' : costo.tipo === 'variable' ? 'Variable' : 'Aporte'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Descripción</p>
+                      <p className="text-gray-700">{costo.descripcion}</p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Monto</p>
+                        <p className="font-semibold text-gray-900">{formatCLP(costo.monto)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Recurrente</p>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          costo.recurrente ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {costo.recurrente ? 'Sí' : 'No'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex justify-end space-x-2 border-t border-gray-100 pt-3">
+                    <button
+                      onClick={() => handleEditCosto(costo)}
+                      className="text-blue-600 hover:text-blue-800 p-2"
+                      aria-label={`Editar costo ${costo.categoria}`}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteCosto(costo.id)}
+                      className="text-red-600 hover:text-red-800 p-2"
+                      aria-label={`Eliminar costo ${costo.categoria}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -295,6 +358,7 @@ const Costos = () => {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

@@ -73,11 +73,11 @@ const PacientesList = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Gestión de Pacientes</h1>
         <Link
           to="/pacientes/nuevo"
-          className="bg-medical-green hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+          className="bg-medical-green hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center justify-center space-x-2 transition-colors sm:w-auto"
         >
           <Plus className="h-5 w-5" />
           <span>Nuevo Paciente</span>
@@ -166,7 +166,7 @@ const PacientesList = () => {
         )}
 
         {totalPages > 1 && (
-          <div className="mt-6 flex justify-center items-center space-x-2">
+          <div className="mt-6 flex flex-wrap justify-center items-center gap-2">
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
