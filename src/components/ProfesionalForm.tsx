@@ -1,10 +1,49 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Save, X, Plus, Trash2 } from 'lucide-react'
+import { Save, X, Plus, Trash2, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
-import { profesionalesService, tiposAtencionService, profesionalComisionesService } from '@/utils/supabase'
-import { TipoAtencion, ProfesionalComision } from '@/types/database'
+import { profesionalesService, tiposAtencionService, profesionalComisionesService, profesionalDisponibilidadService } from '@/utils/supabase'
+import { TipoAtencion, ProfesionalComision, ProfesionalDisponibilidad } from '@/types/database'
+
+type DisponibilidadFormRow = {
+  dia_semana: number
+  activo: boolean
+  hora_inicio: string
+  hora_fin: string
+}
+
+const DIAS_SEMANA: Array<{ value: number; label: string }> = [
+  { value: 1, label: 'Lunes' },
+  { value: 2, label: 'Martes' },
+  { value: 3, label: 'Miércoles' },
+  { value: 4, label: 'Jueves' },
+  { value: 5, label: 'Viernes' },
+  { value: 6, label: 'Sábado' },
+  { value: 0, label: 'Domingo' }
+]
+
+const buildInitialDisponibilidad = (): DisponibilidadFormRow[] =>
+  DIAS_SEMANA.map((dia) => ({
+    dia_semana: dia.value,
+    activo: false,
+    hora_inicio: '09:00',
+    hora_fin: '18:00'
+  }))
+
+const mapDisponibilidadToForm = (rows: ProfesionalDisponibilidad[]): DisponibilidadFormRow[] =>
+  buildInitialDisponibilidad().map((base) => {
+    const row = rows.find((item) => item.dia_semana === base.dia_semana)
+
+    if (!row) return base
+
+    return {
+      dia_semana: base.dia_semana,
+      activo: true,
+      hora_inicio: row.hora_inicio.substring(0, 5),
+      hora_fin: row.hora_fin.substring(0, 5)
+    }
+  })
 
 const ProfesionalForm = () => {
   const navigate = useNavigate()
@@ -28,6 +67,8 @@ const ProfesionalForm = () => {
   const [tiposAtencion, setTiposAtencion] = useState<TipoAtencion[]>([])
   const [comisiones, setComisiones] = useState<ProfesionalComision[]>([])
   const [newComision, setNewComision] = useState({ tipo_atencion_id: '', porcentaje: '' })
+  const [disponibilidad, setDisponibilidad] = useState<DisponibilidadFormRow[]>(buildInitialDisponibilidad())
+  const [profesionalSucursalId, setProfesionalSucursalId] = useState<string | null>(currentSucursal?.id || null)
 
   useEffect(() => {
     if (isEditing) {
@@ -50,16 +91,18 @@ const ProfesionalForm = () => {
   const loadProfesional = async () => {
     try {
       setLoading(true)
-      const [profesional, tiposData, comisionesData] = await Promise.all([
+      const [profesional, tiposData, comisionesData, disponibilidadData] = await Promise.all([
         profesionalesService.getById(id!),
         tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id),
-        profesionalComisionesService.getAll(id!)
+        profesionalComisionesService.getAll(id!),
+        profesionalDisponibilidadService.getByProfesional(id!, currentSucursal?.id)
       ])
       
       setTiposAtencion(tiposData)
       setComisiones(comisionesData)
 
       if (profesional) {
+        setProfesionalSucursalId(profesional.sucursal_id || currentSucursal?.id || null)
         setFormData({
           nombre: profesional.nombre,
           especialidad: profesional.especialidad,
@@ -69,6 +112,7 @@ const ProfesionalForm = () => {
           monto_fijo_pago: profesional.monto_fijo_pago,
           activo: profesional.activo
         })
+        setDisponibilidad(mapDisponibilidadToForm(disponibilidadData))
       }
     } catch (error) {
       toast.error('Error al cargar el profesional')
@@ -145,12 +189,48 @@ const ProfesionalForm = () => {
         sucursal_id: currentSucursal?.id || null
       }
 
+      const disponibilidadActiva = disponibilidad
+        .filter((item) => item.activo)
+        .map((item) => ({
+          dia_semana: item.dia_semana,
+          hora_inicio: `${item.hora_inicio}:00`,
+          hora_fin: `${item.hora_fin}:00`
+        }))
+
+      const disponibilidadInvalida = disponibilidad
+        .filter((item) => item.activo)
+        .find((item) => item.hora_inicio >= item.hora_fin)
+
+      if (disponibilidadInvalida) {
+        const dia = DIAS_SEMANA.find((item) => item.value === disponibilidadInvalida.dia_semana)?.label || 'día seleccionado'
+        throw new Error(`El horario de ${dia} tiene una hora de inicio mayor o igual a la hora de término`)
+      }
+
+      const sucursalDisponibilidadId = profesionalData.sucursal_id || profesionalSucursalId
+
+      if (disponibilidadActiva.length > 0 && !sucursalDisponibilidadId) {
+        throw new Error('Debes tener una sucursal activa para guardar la disponibilidad del profesional')
+      }
+
+      let profesionalId = id
+
       if (isEditing) {
         await profesionalesService.update(id!, profesionalData)
+        profesionalId = id!
         toast.success('Profesional actualizado exitosamente')
       } else {
-        await profesionalesService.create(profesionalData)
+        const nuevoProfesional = await profesionalesService.create(profesionalData)
+        profesionalId = nuevoProfesional.id
+        setProfesionalSucursalId(nuevoProfesional.sucursal_id || currentSucursal?.id || null)
         toast.success('Profesional creado exitosamente')
+      }
+
+      if (profesionalId && sucursalDisponibilidadId) {
+        await profesionalDisponibilidadService.replaceForProfesional(
+          profesionalId,
+          sucursalDisponibilidadId,
+          disponibilidadActiva
+        )
       }
       
       navigate('/profesionales')
@@ -170,6 +250,30 @@ const ProfesionalForm = () => {
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : 
                type === 'number' ? parseFloat(value) || 0 : value
     }))
+  }
+
+  const handleDisponibilidadToggle = (diaSemana: number, activo: boolean) => {
+    setDisponibilidad((prev) =>
+      prev.map((item) =>
+        item.dia_semana === diaSemana
+          ? { ...item, activo }
+          : item
+      )
+    )
+  }
+
+  const handleDisponibilidadTimeChange = (
+    diaSemana: number,
+    field: 'hora_inicio' | 'hora_fin',
+    value: string
+  ) => {
+    setDisponibilidad((prev) =>
+      prev.map((item) =>
+        item.dia_semana === diaSemana
+          ? { ...item, [field]: value }
+          : item
+      )
+    )
   }
 
   if (loading) {
@@ -297,6 +401,67 @@ const ProfesionalForm = () => {
                 Monto fijo que el profesional recibe por cada atención
               </p>
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 pt-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Clock className="h-5 w-5 text-gray-500" />
+            <h3 className="text-lg font-medium text-gray-800">Disponibilidad Semanal</h3>
+          </div>
+          <p className="mb-4 text-sm text-gray-500">
+            Define el rango horario en que cada profesional atiende. Fuera de ese horario, la agenda marcará el bloque como no agendable.
+          </p>
+
+          <div className="space-y-3">
+            {DIAS_SEMANA.map((dia) => {
+              const row = disponibilidad.find((item) => item.dia_semana === dia.value)
+
+              if (!row) return null
+
+              return (
+                <div
+                  key={dia.value}
+                  className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-[180px_1fr_1fr]"
+                >
+                  <label className="flex items-center gap-3 text-sm font-medium text-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={row.activo}
+                      onChange={(e) => handleDisponibilidadToggle(dia.value, e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-medical-blue focus:ring-medical-blue"
+                    />
+                    <span>{dia.label}</span>
+                  </label>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                      Desde
+                    </label>
+                    <input
+                      type="time"
+                      value={row.hora_inicio}
+                      onChange={(e) => handleDisponibilidadTimeChange(dia.value, 'hora_inicio', e.target.value)}
+                      disabled={!row.activo}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-medical-blue focus:ring-medical-blue disabled:bg-gray-100 disabled:text-gray-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                      Hasta
+                    </label>
+                    <input
+                      type="time"
+                      value={row.hora_fin}
+                      onChange={(e) => handleDisponibilidadTimeChange(dia.value, 'hora_fin', e.target.value)}
+                      disabled={!row.activo}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-medical-blue focus:ring-medical-blue disabled:bg-gray-100 disabled:text-gray-400"
+                    />
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
 

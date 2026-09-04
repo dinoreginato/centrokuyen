@@ -183,6 +183,51 @@ export const profesionalDisponibilidadService = {
 
     if (error) throw error
     return data || []
+  },
+
+  async replaceForProfesional(
+    profesionalId: string,
+    sucursalId: string,
+    disponibilidad: Array<Pick<ProfesionalDisponibilidad, 'dia_semana' | 'hora_inicio' | 'hora_fin'>>
+  ): Promise<void> {
+    const { data: oldData, error: readError } = await supabase
+      .from('profesional_disponibilidad')
+      .select('*')
+      .eq('profesional_id', profesionalId)
+      .eq('sucursal_id', sucursalId)
+
+    if (readError) throw readError
+
+    const { error: deleteError } = await supabase
+      .from('profesional_disponibilidad')
+      .delete()
+      .eq('profesional_id', profesionalId)
+      .eq('sucursal_id', sucursalId)
+
+    if (deleteError) throw deleteError
+
+    if (disponibilidad.length > 0) {
+      const payload = disponibilidad.map((item) => ({
+        profesional_id: profesionalId,
+        sucursal_id: sucursalId,
+        dia_semana: item.dia_semana,
+        hora_inicio: item.hora_inicio,
+        hora_fin: item.hora_fin
+      }))
+
+      const { error: insertError } = await supabase
+        .from('profesional_disponibilidad')
+        .insert(payload)
+
+      if (insertError) throw insertError
+    }
+
+    await auditService.logAction('profesional_disponibilidad', profesionalId, {
+      action: 'UPDATE',
+      oldData: oldData || [],
+      newData: disponibilidad,
+      metadata: { sucursal_id: sucursalId }
+    })
   }
 }
 
