@@ -369,9 +369,18 @@ const validateAtencionOverlap = async (
     return
   }
 
+  if (atencion.activo === false) {
+    return
+  }
+
+  const estadoCita = atencion.estado_cita || 'por_confirmar'
+  if (estadoCita === 'cancelada' || estadoCita === 'reagendada') {
+    return
+  }
+
   const { data, error } = await supabase
     .from('atenciones')
-    .select('id, hora, paciente:pacientes(nombre), es_bloqueo, tipo_atencion')
+    .select('id, hora, paciente:pacientes(nombre), es_bloqueo, tipo_atencion, estado_cita')
     .eq('activo', true)
     .eq('profesional_id', atencion.profesional_id)
     .eq('fecha', atencion.fecha)
@@ -383,6 +392,8 @@ const validateAtencionOverlap = async (
 
   const overlapping = (data || []).find(existing => {
     if (excludeId && existing.id === excludeId) return false
+    if ((existing.estado_cita || 'por_confirmar') === 'cancelada') return false
+    if ((existing.estado_cita || 'por_confirmar') === 'reagendada') return false
 
     const existingStart = timeToMinutes(existing.hora)
     const existingEnd = existingStart + ATENCION_DURATION_MINUTES
