@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 export { supabase }
-import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision, AuditLog } from '@/types/database'
+import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision, AuditLog, ProfesionalDisponibilidad } from '@/types/database'
 
 const applyCentroFilter = <T>(query: T, centroId?: string | null) => {
   if (!centroId) return query
@@ -159,6 +159,30 @@ export const profesionalesService = {
         sucursalId: oldData.sucursal_id ?? null
       })
     }
+  }
+}
+
+export const profesionalDisponibilidadService = {
+  async getByProfesional(profesionalId: string, sucursalId?: string, diaSemana?: number): Promise<ProfesionalDisponibilidad[]> {
+    let query = supabase
+      .from('profesional_disponibilidad')
+      .select('*')
+      .eq('profesional_id', profesionalId)
+      .order('dia_semana', { ascending: true })
+      .order('hora_inicio', { ascending: true })
+
+    if (sucursalId) {
+      query = query.eq('sucursal_id', sucursalId)
+    }
+
+    if (typeof diaSemana === 'number') {
+      query = query.eq('dia_semana', diaSemana)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+    return data || []
   }
 }
 

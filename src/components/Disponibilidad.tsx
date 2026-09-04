@@ -6,8 +6,8 @@ import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
-import { Atencion, Profesional } from '@/types/database'
-import { atencionesService, profesionalesService } from '@/utils/supabase'
+import { Atencion, Profesional, ProfesionalDisponibilidad } from '@/types/database'
+import { atencionesService, profesionalDisponibilidadService, profesionalesService } from '@/utils/supabase'
 import { hasPermission } from '@/utils/permissions'
 
 const START_HOUR = 8
@@ -32,18 +32,20 @@ const Disponibilidad = () => {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
 
   const [atenciones, setAtenciones] = useState<Atencion[]>([])
-  const [loadingAtenciones, setLoadingAtenciones] = useState(false)
+  const [disponibilidad, setDisponibilidad] = useState<ProfesionalDisponibilidad[]>([])
+  const [loadingAgenda, setLoadingAgenda] = useState(false)
 
   useEffect(() => {
     loadProfesionales()
     setAtenciones([])
-  }, [currentSucursal])
+    setDisponibilidad([])
+  }, [currentCentro, currentSucursal])
 
   useEffect(() => {
     if (!selectedProfesionalId || !selectedDate) return
     if (!currentSucursal) return
-    loadAtenciones()
-  }, [selectedProfesionalId, selectedDate, currentSucursal])
+    loadAgendaData()
+  }, [selectedProfesionalId, selectedDate, currentCentro, currentSucursal])
 
   const loadProfesionales = async () => {
     try {
@@ -68,22 +70,32 @@ const Disponibilidad = () => {
     }
   }
 
-  const loadAtenciones = async () => {
+  const loadAgendaData = async () => {
     try {
-      setLoadingAtenciones(true)
-      const data = await atencionesService.getByProfesionalAndDateRange(
-        selectedProfesionalId,
-        selectedDate,
-        selectedDate,
-        currentSucursal?.id,
-        currentCentro?.id
-      )
-      setAtenciones(data)
+      setLoadingAgenda(true)
+      const diaSemana = parseISO(selectedDate).getDay()
+      const [atencionesData, disponibilidadData] = await Promise.all([
+        atencionesService.getByProfesionalAndDateRange(
+          selectedProfesionalId,
+          selectedDate,
+          selectedDate,
+          currentSucursal?.id,
+          currentCentro?.id
+        ),
+        profesionalDisponibilidadService.getByProfesional(
+          selectedProfesionalId,
+          currentSucursal?.id,
+          diaSemana
+        )
+      ])
+
+      setAtenciones(atencionesData)
+      setDisponibilidad(disponibilidadData)
     } catch (error) {
-      toast.error('Error al cargar atenciones')
-      console.error('Error loading atenciones for disponibilidad:', error)
+      toast.error('Error al cargar disponibilidad')
+      console.error('Error loading disponibilidad:', error)
     } finally {
-      setLoadingAtenciones(false)
+      setLoadingAgenda(false)
     }
   }
 
@@ -99,6 +111,16 @@ const Disponibilidad = () => {
     return atenciones.filter(a => a.fecha === selectedDate)
   }, [atenciones, selectedDate])
 
+  const disponibilidadDelDia = useMemo(() => {
+    return disponibilidad
+      .map((item) => ({
+        ...item,
+        inicioMinutos: timeToMinutes(item.hora_inicio),
+        finMinutos: timeToMinutes(item.hora_fin)
+      }))
+      .sort((a, b) => a.inicioMinutos - b.inicioMinutos)
+  }, [disponibilidad])
+
   const slotRows = useMemo(() => {
     return slots.map((slot) => {
       const slotStart = timeToMinutes(slot)
@@ -110,9 +132,21 @@ const Disponibilidad = () => {
         return start < slotEnd && end > slotStart
       })
 
-      return { slot, ocupada }
+      const dentroDeHorario = disponibilidadDelDia.some(rango =>
+        slotStart >= rango.inicioMinutos && slotEnd <= rango.finMinutos
+      )
+
+      const estado = ocupada
+        ? 'ocupado'
+        : disponibilidadDelDia.length === 0
+        ? 'sin_horario'
+        : dentroDeHorario
+        ? 'disponible'
+        : 'fuera_de_horario'
+
+      return { slot, ocupada, estado }
     })
-  }, [slots, atencionesDelDia])
+  }, [slots, atencionesDelDia, disponibilidadDelDia])
 
   if (loadingProfesionales) {
     return (
@@ -124,6 +158,11 @@ const Disponibilidad = () => {
 
   const selectedProfesional = profesionales.find(p => p.id === selectedProfesionalId) || null
   const dateLabel = selectedDate ? format(parseISO(selectedDate), 'EEEE dd/MM/yyyy', { locale: es }) : ''
+  const disponibilidadLabel = disponibilidadDelDia.length > 0
+    ? disponibilidadDelDia
+        .map((rango) => `${rango.hora_inicio.substring(0, 5)} - ${rango.hora_fin.substring(0, 5)}`)
+        .join(' · ')
+    : 'Sin horario configurado para este día'
 
   return (
     <div className="space-y-6">
@@ -168,11 +207,16 @@ const Disponibilidad = () => {
 
         <div className="mt-4 text-sm text-gray-600">
           {selectedProfesional ? (
-            <span>
-              <span className="font-medium">{selectedProfesional.nombre}</span>
-              {' · '}
-              <span className="capitalize">{dateLabel}</span>
-            </span>
+            <div className="space-y-1">
+              <div>
+                <span className="font-medium">{selectedProfesional.nombre}</span>
+                {' · '}
+                <span className="capitalize">{dateLabel}</span>
+              </div>
+              <div>
+                Horario configurado: <span className="font-medium">{disponibilidadLabel}</span>
+              </div>
+            </div>
           ) : (
             <span>Seleccione un profesional</span>
           )}
@@ -180,33 +224,37 @@ const Disponibilidad = () => {
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-6">
-        {loadingAtenciones ? (
+        {loadingAgenda ? (
           <div className="flex justify-center items-center h-48">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
           </div>
         ) : (
           <>
             <div className="space-y-3 md:hidden">
-              {slotRows.map(({ slot, ocupada }) => (
+              {slotRows.map(({ slot, ocupada, estado }) => (
                 <div key={slot} className="rounded-lg border border-gray-200 p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4 text-gray-400" />
                       <span className="font-semibold text-gray-900">{slot}</span>
                     </div>
-                    {ocupada ? (
+                    {estado === 'ocupado' ? (
                       <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
                         Ocupado
                       </span>
-                    ) : (
+                    ) : estado === 'disponible' ? (
                       <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                         Disponible
+                      </span>
+                    ) : (
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700">
+                        {estado === 'sin_horario' ? 'Sin horario' : 'Fuera de horario'}
                       </span>
                     )}
                   </div>
 
                   <div className="mt-3">
-                    {ocupada ? (
+                    {estado === 'ocupado' && ocupada ? (
                       <div className="flex items-start gap-2 text-sm text-gray-700">
                         <User className="h-4 w-4 text-gray-400 mt-0.5" />
                         <div>
@@ -216,26 +264,32 @@ const Disponibilidad = () => {
                           </div>
                         </div>
                       </div>
+                    ) : estado === 'disponible' ? (
+                      <p className="text-sm text-gray-500">Horario libre dentro de la jornada configurada.</p>
+                    ) : estado === 'sin_horario' ? (
+                      <p className="text-sm text-gray-500">No hay un horario laboral configurado para este día.</p>
                     ) : (
-                      <p className="text-sm text-gray-500">Horario libre para agendar.</p>
+                      <p className="text-sm text-gray-500">Este bloque queda fuera del horario laboral del profesional.</p>
                     )}
                   </div>
 
                   <div className="mt-4 flex justify-end border-t border-gray-100 pt-3">
-                    {ocupada ? (
+                    {estado === 'ocupado' && ocupada ? (
                       <Link
                         to={`/agenda/${ocupada.id}`}
                         className="text-medical-blue hover:text-blue-700 font-medium text-sm"
                       >
                         Ver / editar
                       </Link>
-                    ) : (
+                    ) : estado === 'disponible' ? (
                       <Link
                         to={`/agenda/nueva?profesional_id=${encodeURIComponent(selectedProfesionalId)}&fecha=${encodeURIComponent(selectedDate)}&hora=${encodeURIComponent(slot)}`}
                         className="inline-flex items-center px-3 py-1.5 border border-medical-blue text-medical-blue rounded-md hover:bg-medical-blue hover:text-white transition-colors text-sm"
                       >
                         Agendar
                       </Link>
+                    ) : (
+                      <span className="text-sm font-medium text-gray-400">No agendable</span>
                     )}
                   </div>
                 </div>
@@ -253,7 +307,7 @@ const Disponibilidad = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {slotRows.map(({ slot, ocupada }) => (
+                {slotRows.map(({ slot, ocupada, estado }) => (
                   <tr key={slot} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex items-center gap-2">
@@ -262,18 +316,22 @@ const Disponibilidad = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {ocupada ? (
+                      {estado === 'ocupado' ? (
                         <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
                           Ocupado
                         </span>
-                      ) : (
+                      ) : estado === 'disponible' ? (
                         <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                           Disponible
+                        </span>
+                      ) : (
+                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700">
+                          {estado === 'sin_horario' ? 'Sin horario' : 'Fuera de horario'}
                         </span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {ocupada ? (
+                      {estado === 'ocupado' && ocupada ? (
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-gray-400" />
                           <div>
@@ -283,25 +341,31 @@ const Disponibilidad = () => {
                             </div>
                           </div>
                         </div>
+                      ) : estado === 'disponible' ? (
+                        <span className="text-gray-500">Libre dentro del horario</span>
+                      ) : estado === 'sin_horario' ? (
+                        <span className="text-gray-400">Sin horario configurado</span>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-gray-400">Fuera de horario</span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                      {ocupada ? (
+                      {estado === 'ocupado' && ocupada ? (
                         <Link
                           to={`/agenda/${ocupada.id}`}
                           className="text-medical-blue hover:text-blue-700 font-medium"
                         >
                           Ver / editar
                         </Link>
-                      ) : (
+                      ) : estado === 'disponible' ? (
                         <Link
                           to={`/agenda/nueva?profesional_id=${encodeURIComponent(selectedProfesionalId)}&fecha=${encodeURIComponent(selectedDate)}&hora=${encodeURIComponent(slot)}`}
                           className="inline-flex items-center px-3 py-1.5 border border-medical-blue text-medical-blue rounded-md hover:bg-medical-blue hover:text-white transition-colors"
                         >
                           Agendar
                         </Link>
+                      ) : (
+                        <span className="text-gray-400">No agendable</span>
                       )}
                     </td>
                   </tr>

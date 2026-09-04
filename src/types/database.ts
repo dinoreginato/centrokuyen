@@ -32,6 +32,17 @@ export interface Profesional {
   valor_pago?: number
 }
 
+export interface ProfesionalDisponibilidad {
+  id: string
+  profesional_id: string
+  sucursal_id: string
+  dia_semana: number
+  hora_inicio: string
+  hora_fin: string
+  created_at: string
+  updated_at: string
+}
+
 export interface Paciente {
   id: string
   nombre: string
