@@ -574,13 +574,6 @@ export const atencionesService = {
       .single()
     
     if (error) throw error
-    await auditService.logAction('atenciones', data.id, {
-      action: 'INSERT',
-      newData: data,
-      centroId: data.centro_id ?? null,
-      sucursalId: data.sucursal_id ?? null,
-      metadata: data.estado_cita ? { estado_cita: data.estado_cita } : undefined
-    })
     return data
   },
 
@@ -624,51 +617,16 @@ export const atencionesService = {
       .single()
     
     if (error) throw error
-    const metadata: Record<string, unknown> = {}
-    if (existing.estado_cita !== data.estado_cita) {
-      metadata.estado_cita_anterior = existing.estado_cita || 'por_confirmar'
-      metadata.estado_cita_nuevo = data.estado_cita || 'por_confirmar'
-    }
-    if (existing.pagado !== data.pagado) {
-      metadata.pagado_anterior = existing.pagado
-      metadata.pagado_nuevo = data.pagado
-    }
-    if (existing.estado_asistencia !== data.estado_asistencia) {
-      metadata.estado_asistencia_anterior = existing.estado_asistencia || 'pendiente'
-      metadata.estado_asistencia_nuevo = data.estado_asistencia || 'pendiente'
-    }
-    await auditService.logAction('atenciones', id, {
-      action: 'UPDATE',
-      oldData: existing,
-      newData: data,
-      centroId: data.centro_id ?? existing.centro_id ?? null,
-      sucursalId: data.sucursal_id ?? existing.sucursal_id ?? null,
-      metadata: Object.keys(metadata).length > 0 ? metadata : undefined
-    })
     return data
   },
 
   async delete(id: string): Promise<void> {
-    const oldData = await this.getById(id);
-    
     const { error } = await supabase
       .from('atenciones')
       .update({ activo: false })
       .eq('id', id)
     
     if (error) throw error
-    if (oldData) {
-      await auditService.logAction('atenciones', id, {
-        action: 'SOFT_DELETE',
-        oldData,
-        centroId: oldData.centro_id ?? null,
-        sucursalId: oldData.sucursal_id ?? null,
-        metadata: {
-          estado_cita: oldData.estado_cita || 'por_confirmar',
-          es_bloqueo: oldData.es_bloqueo || false
-        }
-      })
-    }
   }
 }
 
