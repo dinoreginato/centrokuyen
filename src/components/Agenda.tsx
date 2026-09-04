@@ -218,7 +218,7 @@ Gracias 🙌🏻`
   const renderAtencionCard = (atencion: Atencion, compact = false) => (
     <div
       key={atencion.id}
-      className={`relative rounded-md border shadow-sm transition-all hover:shadow-md ${
+      className={`group relative rounded-md border shadow-sm transition-all hover:shadow-md ${
         compact ? 'p-3 text-sm' : 'p-2 text-xs'
       } ${getEstadoCitaCardClass(atencion.estado_cita, atencion.pagado, atencion.estado_asistencia)}`}
     >
@@ -277,8 +277,8 @@ Gracias 🙌🏻`
         )}
       </div>
 
-      <div className={`flex flex-wrap justify-end items-center gap-1 pt-1.5 border-t border-gray-100 ${compact ? '' : 'md:opacity-0 group-hover:opacity-100 transition-opacity'}`}>
-        {!atencion.es_bloqueo && (
+      <div className="flex flex-wrap justify-end items-center gap-1 pt-1.5 border-t border-gray-100">
+        {!atencion.es_bloqueo && canManageAtencion(user, atencion) && (
           <>
             <button
               onClick={() => updateEstadoCita(atencion, 'confirmada')}
