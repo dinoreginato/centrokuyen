@@ -30,6 +30,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<Usuario | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const clearLocalAuthState = () => {
+    setUser(null)
+    localStorage.removeItem('user')
+  }
+
   useEffect(() => {
     let isMounted = true
 
@@ -68,8 +73,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const syncSessionUser = async (session: Session | null) => {
     if (!session?.user) {
-      setUser(null)
-      localStorage.removeItem('user')
+      clearLocalAuthState()
       return
     }
 
@@ -103,10 +107,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }
 
   const logout = async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
-    setUser(null)
-    localStorage.removeItem('user')
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
+
+      if (error && !/session/i.test(error.message)) {
+        throw error
+      }
+    } finally {
+      clearLocalAuthState()
+    }
   }
 
   const hasRole = (role: string): boolean => {
