@@ -37,10 +37,41 @@ export default defineConfig({
     },
   },
   build: {
-    // Dejar que Vite maneje los nombres de archivo con hash automáticamente para mejor caché
     rollupOptions: {
       output: {
-        manualChunks: undefined
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+
+          if (id.includes('react') || id.includes('scheduler')) {
+            return 'react-vendor'
+          }
+
+          if (id.includes('react-router')) {
+            return 'router-vendor'
+          }
+
+          if (id.includes('@supabase') || id.includes('pg')) {
+            return 'supabase-vendor'
+          }
+
+          if (id.includes('jspdf') || id.includes('xlsx') || id.includes('html2canvas')) {
+            return 'export-vendor'
+          }
+
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'charts-vendor'
+          }
+
+          if (id.includes('date-fns')) {
+            return 'date-vendor'
+          }
+
+          if (id.includes('lucide-react')) {
+            return 'icons-vendor'
+          }
+
+          return 'vendor'
+        }
       }
     }
   }

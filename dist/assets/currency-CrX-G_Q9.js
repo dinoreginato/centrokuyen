@@ -1,0 +1,1 @@
+const i=r=>{const t=typeof r=="string"?parseFloat(r):r;return isNaN(t)?"$0":new Intl.NumberFormat("es-CL",{style:"currency",currency:"CLP",minimumFractionDigits:0,maximumFractionDigits:0}).format(t)};export{i as f};
