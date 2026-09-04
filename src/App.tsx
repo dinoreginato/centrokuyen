@@ -2,7 +2,7 @@ import { Suspense, lazy, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
-import { SucursalProvider } from '@/contexts/SucursalContext'
+import { SucursalProvider, useSucursal } from '@/contexts/SucursalContext'
 import Navigation from '@/components/Navigation'
 import Header from '@/components/Header'
 import PageLoader from '@/components/ui/PageLoader'
@@ -47,6 +47,7 @@ const PermissionRoute = ({
 // Main App Content
 const AppContent = () => {
   const { isAuthenticated } = useAuth()
+  const { loading: tenantLoading } = useSucursal()
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   
   if (!isAuthenticated) {
@@ -55,6 +56,10 @@ const AppContent = () => {
         <Login />
       </Suspense>
     )
+  }
+
+  if (tenantLoading) {
+    return <PageLoader label="Cargando sucursal..." />
   }
   
   return (

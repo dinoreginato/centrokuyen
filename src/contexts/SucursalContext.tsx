@@ -29,17 +29,55 @@ export const SucursalProvider = ({ children }: { children: ReactNode }) => {
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [loading, setLoading] = useState(true)
 
+  const resetTenantState = () => {
+    setCurrentCentro(null)
+    setCentros([])
+    setAllSucursales([])
+    setCurrentSucursal(null)
+    setSucursales([])
+    localStorage.removeItem(SELECTED_CENTRO_STORAGE_KEY)
+    localStorage.removeItem(SELECTED_SUCURSAL_STORAGE_KEY)
+  }
+
   useEffect(() => {
-    loadTenantData()
+    void loadTenantData()
   }, [user?.id, user?.centro_id, user?.sucursal_id])
 
   const loadTenantData = async () => {
+    if (!user) {
+      resetTenantState()
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
-      const [centrosData, sucursalesData] = await Promise.all([
-        centrosService.getAll(),
-        sucursalesService.getAll()
-      ])
+      let centrosData: Centro[] = []
+      let sucursalesData: Sucursal[] = []
+
+      if (user.sucursal_id) {
+        const sucursal = await sucursalesService.getById(user.sucursal_id)
+        sucursalesData = sucursal ? [sucursal] : []
+
+        const centroId = sucursal?.centro_id || user.centro_id || null
+        if (centroId) {
+          const centro = await centrosService.getById(centroId)
+          centrosData = centro ? [centro] : []
+        }
+      } else if (user.centro_id) {
+        const [centro, scopedSucursales] = await Promise.all([
+          centrosService.getById(user.centro_id),
+          sucursalesService.getAll(user.centro_id)
+        ])
+
+        centrosData = centro ? [centro] : []
+        sucursalesData = scopedSucursales
+      } else {
+        ;[centrosData, sucursalesData] = await Promise.all([
+          centrosService.getAll(),
+          sucursalesService.getAll()
+        ])
+      }
 
       const sucursalFija = user?.sucursal_id
         ? sucursalesData.find(sucursal => sucursal.id === user.sucursal_id) || null
@@ -99,6 +137,7 @@ export const SucursalProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error('Error loading tenant data:', error)
+      resetTenantState()
     } finally {
       setLoading(false)
     }

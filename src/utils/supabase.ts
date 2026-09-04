@@ -1266,6 +1266,17 @@ export const sucursalesService = {
     return data || []
   },
 
+  async getById(id: string): Promise<Sucursal | null> {
+    const { data, error } = await supabase
+      .from('sucursales')
+      .select('*, centro:centros(*)')
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
   async create(sucursal: Omit<Sucursal, 'id' | 'created_at'>): Promise<Sucursal> {
     const { data, error } = await supabase
       .from('sucursales')
