@@ -9,7 +9,7 @@ import { atencionesService } from '@/utils/supabase'
 import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfMonth, endOfMonth, isSameMonth, differenceInYears } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { getEstadoCitaBadgeClass, getEstadoCitaCardClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
-import { canManageAtencion, hasPermission } from '@/utils/permissions'
+import { canManageAtencion, canManagePayment, hasPermission } from '@/utils/permissions'
 
 const Agenda = () => {
   const { user } = useAuth()
@@ -102,6 +102,11 @@ const Agenda = () => {
   }
 
   const togglePago = async (atencion: Atencion) => {
+    if (!canManagePayment(user, atencion)) {
+      toast.error('No tienes permisos para cambiar el estado de pago de esta atención')
+      return
+    }
+
     const estadoCita = atencion.estado_cita || 'por_confirmar'
 
     if (estadoCita === 'cancelada' || estadoCita === 'reagendada') {
@@ -329,7 +334,7 @@ Gracias 🙌🏻`
           <MessageCircle className="h-4 w-4" />
         </button>
 
-        {hasPermission(user, 'managePagos') && (
+        {canManagePayment(user, atencion) && (
           <button
             onClick={() => togglePago(atencion)}
             className={`p-1 rounded hover:bg-yellow-50 ${atencion.pagado ? 'text-green-600' : 'text-gray-400 hover:text-yellow-600'}`}

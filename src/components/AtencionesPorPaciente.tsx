@@ -10,12 +10,11 @@ import { Atencion, Paciente } from '@/types/database'
 import { atencionesService, pacientesService } from '@/utils/supabase'
 import { formatCLP } from '@/utils/currency'
 import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
-import { canManageAtencion, hasPermission } from '@/utils/permissions'
+import { canManageAtencion, canManagePayment, hasPermission } from '@/utils/permissions'
 
 const AtencionesPorPaciente = () => {
   const { user } = useAuth()
   const { currentCentro, currentSucursal } = useSucursal()
-  const canManagePagos = hasPermission(user, 'managePagos')
   const canViewFinancialFields = hasPermission(user, 'viewFinancialFields')
 
   const [pacientes, setPacientes] = useState<Paciente[]>([])
@@ -64,7 +63,10 @@ const AtencionesPorPaciente = () => {
   }
 
   const togglePago = async (atencion: Atencion) => {
-    if (!canManagePagos) return
+    if (!canManagePayment(user, atencion)) {
+      toast.error('No tienes permisos para cambiar el estado de pago de esta atención')
+      return
+    }
 
     const estadoCita = atencion.estado_cita || 'por_confirmar'
     if (estadoCita === 'cancelada' || estadoCita === 'reagendada') {
@@ -259,7 +261,7 @@ const AtencionesPorPaciente = () => {
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                       <div className="flex justify-end space-x-3">
-                        {canManagePagos && (
+                        {canManagePayment(user, atencion) && (
                           <button
                             onClick={() => togglePago(atencion)}
                             className="text-gray-600 hover:text-gray-900"

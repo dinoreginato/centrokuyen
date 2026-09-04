@@ -11,6 +11,7 @@ export type AppPermission =
   | 'manageProfesionales'
   | 'manageTiposAtencion'
   | 'managePagos'
+  | 'markOwnPayments'
   | 'viewReportes'
   | 'viewCostos'
   | 'manageUsuarios'
@@ -46,7 +47,9 @@ const ROLE_PERMISSIONS: Record<Usuario['rol'], AppPermission[]> = {
     'viewAgenda',
     'createAgenda',
     'viewDisponibilidad',
-    'viewPatientHistory'
+    'viewPatientHistory',
+    'viewFinancialFields',
+    'markOwnPayments'
   ],
   usuario: [
     'viewDashboard',
@@ -73,6 +76,15 @@ export const canManageAtencion = (
   if (!user || !atencion) return false
   if (user.rol === 'admin') return true
   return user.rol === 'profesional' && user.profesional_id === atencion.profesional_id
+}
+
+export const canManagePayment = (
+  user: Usuario | null | undefined,
+  atencion: Pick<Atencion, 'profesional_id'> | null | undefined
+) => {
+  if (!user || !atencion) return false
+  if (hasPermission(user, 'managePagos')) return true
+  return hasPermission(user, 'markOwnPayments') && canManageAtencion(user, atencion)
 }
 
 export const getRoleLabel = (user: Usuario | null | undefined) => {
