@@ -6,7 +6,7 @@ import { Atencion, Profesional } from '@/types/database'
 import { atencionesService, profesionalesService, reportesService, costosService, profesionalComisionesService } from '@/utils/supabase'
 import { format as dateFormat, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { exportToPDF, exportToExcel, exportUtils } from '@/utils/export'
+import { exportUtils } from '@/utils/export'
 import { formatCLP } from '@/utils/currency'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
@@ -21,6 +21,7 @@ const Reportes = () => {
   const [comisiones, setComisiones] = useState<any[]>([])
   const [costos, setCostos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [exportingFormat, setExportingFormat] = useState<'pdf' | 'excel' | 'csv' | 'json' | null>(null)
 
   useEffect(() => {
     if (currentSucursal) {
@@ -156,6 +157,12 @@ const Reportes = () => {
 
   const handleExport = async (format: 'pdf' | 'excel' | 'csv' | 'json') => {
     try {
+      setExportingFormat(format)
+      const heavyExportModule =
+        format === 'pdf' || format === 'excel'
+          ? await import('@/utils/exportHeavy')
+          : null
+
       if (selectedProfesional !== 'todos') {
         // Export individual professional report
         const professional = profesionales.find(p => p.id === selectedProfesional)
@@ -171,8 +178,10 @@ const Reportes = () => {
         const totalPayment = paymentSummary?.total || 0
         
         if (format === 'pdf') {
+          const { exportToPDF } = heavyExportModule!
           exportToPDF.professionalReport(professional, professionalAppointments, monthName, year, totalPayment, currentCentro?.nombre)
         } else if (format === 'excel') {
+          const { exportToExcel } = heavyExportModule!
           exportToExcel.professionalReport(professional, professionalAppointments, monthName, year, totalPayment, currentCentro?.nombre)
         } else if (format === 'csv') {
           exportUtils.toCSV(
@@ -214,6 +223,7 @@ const Reportes = () => {
         }
         
         if (format === 'pdf') {
+          const { exportToPDF } = heavyExportModule!
           exportToPDF.monthlyReport({
             centerName: currentCentro?.nombre,
             month: monthName,
@@ -225,6 +235,7 @@ const Reportes = () => {
             costs
           })
         } else if (format === 'excel') {
+          const { exportToExcel } = heavyExportModule!
           exportToExcel.monthlyReport({
             centerName: currentCentro?.nombre,
             month: monthName,
@@ -271,6 +282,8 @@ const Reportes = () => {
     } catch (error) {
       console.error('Error exporting report:', error)
       toast.error('Error al exportar el reporte')
+    } finally {
+      setExportingFormat(null)
     }
   }
 
@@ -313,6 +326,7 @@ const Reportes = () => {
                 <button
                   key={type}
                   onClick={() => handleExport(type as 'pdf' | 'excel' | 'csv' | 'json')}
+                  disabled={exportingFormat !== null}
                   className={`px-3 py-2 rounded-md flex items-center space-x-1 text-sm text-white ${
                     type === 'pdf'
                       ? 'bg-red-600 hover:bg-red-700'
@@ -321,10 +335,10 @@ const Reportes = () => {
                       : type === 'csv'
                       ? 'bg-slate-700 hover:bg-slate-800'
                       : 'bg-indigo-600 hover:bg-indigo-700'
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   <Download className="h-4 w-4" />
-                  <span>{type.toUpperCase()}</span>
+                  <span>{exportingFormat === type ? 'Procesando...' : type.toUpperCase()}</span>
                 </button>
               ))}
             </div>
@@ -501,6 +515,7 @@ const Reportes = () => {
                 <button
                   key={type}
                   onClick={() => handleExport(type as 'pdf' | 'excel' | 'csv' | 'json')}
+                  disabled={exportingFormat !== null}
                   className={`px-3 py-1 rounded text-sm flex items-center space-x-1 text-white ${
                     type === 'pdf'
                       ? 'bg-red-600 hover:bg-red-700'
@@ -509,10 +524,10 @@ const Reportes = () => {
                       : type === 'csv'
                       ? 'bg-slate-700 hover:bg-slate-800'
                       : 'bg-indigo-600 hover:bg-indigo-700'
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   <Download className="h-4 w-4" />
-                  <span>{type.toUpperCase()}</span>
+                  <span>{exportingFormat === type ? 'Procesando...' : type.toUpperCase()}</span>
                 </button>
               ))}
             </div>

@@ -54,8 +54,16 @@ export default defineConfig({
             return 'supabase-vendor'
           }
 
-          if (id.includes('jspdf') || id.includes('xlsx') || id.includes('html2canvas')) {
-            return 'export-vendor'
+          if (id.includes('jspdf')) {
+            return 'jspdf-vendor'
+          }
+
+          if (id.includes('xlsx')) {
+            return 'xlsx-vendor'
+          }
+
+          if (id.includes('html2canvas')) {
+            return 'html2canvas-vendor'
           }
 
           if (id.includes('recharts') || id.includes('d3-')) {
