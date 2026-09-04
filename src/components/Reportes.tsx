@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react'
-import { FileText, DollarSign, TrendingUp, Users, Calendar, Printer, Download } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { FileText, DollarSign, TrendingUp, Users, Printer, Download, SearchX } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion, Profesional } from '@/types/database'
 import { atencionesService, profesionalesService, reportesService, costosService, profesionalComisionesService } from '@/utils/supabase'
 import { format as dateFormat, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { exportToPDF, exportToExcel } from '@/utils/export'
+import { exportToPDF, exportToExcel, exportUtils } from '@/utils/export'
 import { formatCLP } from '@/utils/currency'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
 
 const Reportes = () => {
   const { currentCentro, currentSucursal } = useSucursal()
@@ -95,7 +97,7 @@ const Reportes = () => {
     return 0
   }
 
-  const getAtencionesPorProfesional = () => {
+  const atencionesPorProfesional = useMemo(() => {
     const atencionesPorProfesional: { [key: string]: { profesional: Profesional, atenciones: Atencion[], total: number, pagosPendientes: number } } = {}
     
     atenciones.forEach(atencion => {
@@ -121,9 +123,9 @@ const Reportes = () => {
     })
     
     return Object.values(atencionesPorProfesional)
-  }
+  }, [atenciones, comisiones, profesionales])
 
-  const getResumenPorTipoAtencion = () => {
+  const resumenPorTipoAtencion = useMemo(() => {
     const resumen: { [key: string]: { cantidad: number, total: number } } = {}
     
     atenciones.forEach(atencion => {
@@ -138,9 +140,21 @@ const Reportes = () => {
     return Object.entries(resumen)
       .map(([tipo, data]) => ({ tipo, ...data }))
       .sort((a, b) => b.total - a.total)
-  }
+  }, [atenciones])
 
-  const handleExport = async (format: 'pdf' | 'excel') => {
+  const professionalPayments = useMemo(() => {
+    return atencionesPorProfesional.map(({ profesional, atenciones, total, pagosPendientes }) => ({
+      professional: profesional.nombre,
+      speciality: profesional.especialidad,
+      appointments: atenciones.length,
+      totalIncome: atenciones.reduce((sum, atencion) => sum + (atencion.valor_cobrado || 0), 0),
+      totalPayment: total,
+      pendingPayment: pagosPendientes,
+      paymentType: profesional.porcentaje_pago > 0 ? `${profesional.porcentaje_pago}%` : formatCLP(profesional.monto_fijo_pago)
+    }))
+  }, [atencionesPorProfesional])
+
+  const handleExport = async (format: 'pdf' | 'excel' | 'csv' | 'json') => {
     try {
       if (selectedProfesional !== 'todos') {
         // Export individual professional report
@@ -153,11 +167,34 @@ const Reportes = () => {
         const professionalAppointments = atenciones.filter(a => a.profesional_id === selectedProfesional)
         const [year, month] = selectedMonth.split('-').map(Number)
         const monthName = dateFormat(new Date(year, month - 1), 'MMMM', { locale: es })
+        const paymentSummary = atencionesPorProfesional.find(item => item.profesional.id === selectedProfesional)
+        const totalPayment = paymentSummary?.total || 0
         
         if (format === 'pdf') {
-          exportToPDF.professionalReport(professional, professionalAppointments, monthName, year)
+          exportToPDF.professionalReport(professional, professionalAppointments, monthName, year, totalPayment, currentCentro?.nombre)
+        } else if (format === 'excel') {
+          exportToExcel.professionalReport(professional, professionalAppointments, monthName, year, totalPayment, currentCentro?.nombre)
+        } else if (format === 'csv') {
+          exportUtils.toCSV(
+            professionalAppointments.map((item) => ({
+              fecha: item.fecha,
+              hora: item.hora.substring(0, 5),
+              paciente: item.paciente?.nombre || '',
+              tipo: item.tipos_atencion?.nombre || item.tipo_atencion || '',
+              valor: item.valor_cobrado,
+              pagado: item.pagado ? 'si' : 'no',
+              pago_profesional: calcularPagoProfesional(item)
+            })),
+            `reporte_profesional_${professional.nombre.replace(/\s+/g, '_')}_${monthName}_${year}`
+          )
         } else {
-          exportToExcel.professionalReport(professional, professionalAppointments, monthName, year)
+          exportUtils.toJSON(
+            professionalAppointments.map((item) => ({
+              ...item,
+              pago_profesional: calcularPagoProfesional(item)
+            })),
+            `reporte_profesional_${professional.nombre.replace(/\s+/g, '_')}_${monthName}_${year}`
+          )
         }
         
         toast.success(`Reporte de ${professional.nombre} exportado exitosamente`)
@@ -171,13 +208,6 @@ const Reportes = () => {
         const [year, month] = selectedMonth.split('-').map(Number)
         const monthName = dateFormat(new Date(year, month - 1), 'MMMM', { locale: es })
         
-        const professionalPayments = getAtencionesPorProfesional().map(({ profesional, atenciones, total }) => ({
-          professional: profesional.nombre,
-          appointments: atenciones.length,
-          totalPayment: total,
-          paymentType: profesional.porcentaje_pago > 0 ? `${profesional.porcentaje_pago}%` : `$${profesional.monto_fijo_pago}`
-        }))
-        
         const costs = {
           fixed: costos.filter(c => c.tipo === 'fijo').reduce((sum, c) => sum + c.monto, 0),
           variable: costos.filter(c => c.tipo === 'variable').reduce((sum, c) => sum + c.monto, 0)
@@ -185,6 +215,7 @@ const Reportes = () => {
         
         if (format === 'pdf') {
           exportToPDF.monthlyReport({
+            centerName: currentCentro?.nombre,
             month: monthName,
             year: year,
             totalIncome: reporteData.ingresos_totales,
@@ -193,8 +224,9 @@ const Reportes = () => {
             professionalPayments,
             costs
           })
-        } else {
+        } else if (format === 'excel') {
           exportToExcel.monthlyReport({
+            centerName: currentCentro?.nombre,
             month: monthName,
             year: year,
             totalIncome: reporteData.ingresos_totales,
@@ -205,6 +237,33 @@ const Reportes = () => {
             appointments: atenciones,
             costsList: costos
           })
+        } else if (format === 'csv') {
+          exportUtils.toCSV(
+            atenciones.map((item) => ({
+              fecha: item.fecha,
+              hora: item.hora.substring(0, 5),
+              paciente: item.paciente?.nombre || '',
+              profesional: item.profesional?.nombre || '',
+              tipo: item.tipos_atencion?.nombre || item.tipo_atencion || '',
+              valor: item.valor_cobrado,
+              pagado: item.pagado ? 'si' : 'no',
+              pago_profesional: calcularPagoProfesional(item)
+            })),
+            `reporte_mensual_${monthName}_${year}`
+          )
+        } else {
+          exportUtils.toJSON(
+            {
+              centro: currentCentro?.nombre || null,
+              mes: monthName,
+              anio: year,
+              resumen: reporteData,
+              pagos_profesionales: professionalPayments,
+              costos,
+              atenciones
+            },
+            `reporte_mensual_${monthName}_${year}`
+          )
         }
         
         toast.success(`Reporte mensual exportado exitosamente`)
@@ -216,11 +275,7 @@ const Reportes = () => {
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Generando reporte del período..." />
   }
 
   return (
@@ -254,20 +309,24 @@ const Reportes = () => {
           </div>
           {selectedProfesional === 'todos' && reporteData && (
             <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => handleExport('pdf')}
-                className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-md flex items-center space-x-1 text-sm"
-              >
-                <Download className="h-4 w-4" />
-                <span>PDF</span>
-              </button>
-              <button
-                onClick={() => handleExport('excel')}
-                className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-md flex items-center space-x-1 text-sm"
-              >
-                <Download className="h-4 w-4" />
-                <span>Excel</span>
-              </button>
+              {['pdf', 'excel', 'csv', 'json'].map((type) => (
+                <button
+                  key={type}
+                  onClick={() => handleExport(type as 'pdf' | 'excel' | 'csv' | 'json')}
+                  className={`px-3 py-2 rounded-md flex items-center space-x-1 text-sm text-white ${
+                    type === 'pdf'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : type === 'excel'
+                      ? 'bg-green-600 hover:bg-green-700'
+                      : type === 'csv'
+                      ? 'bg-slate-700 hover:bg-slate-800'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
+                >
+                  <Download className="h-4 w-4" />
+                  <span>{type.toUpperCase()}</span>
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -289,7 +348,7 @@ const Reportes = () => {
                 </div>
                 <div className="text-right">
                   <p className="text-2xl font-bold text-blue-800">
-                    {formatCLP(getAtencionesPorProfesional().find(item => item.profesional.id === selectedProfesional)?.total || 0)}
+                    {formatCLP(atencionesPorProfesional.find(item => item.profesional.id === selectedProfesional)?.total || 0)}
                   </p>
                   <p className="text-blue-600 text-sm">Total a pagar</p>
                 </div>
@@ -402,7 +461,7 @@ const Reportes = () => {
                   Resumen por Tipo de Actividad
                 </h3>
                 <div className="space-y-3 overflow-y-auto max-h-64">
-                  {getResumenPorTipoAtencion().map((item, index) => (
+                  {resumenPorTipoAtencion.map((item, index) => (
                     <div key={index} className="flex justify-between items-center p-2 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0">
                       <div className="flex items-center">
                         <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-full mr-3">
@@ -413,7 +472,7 @@ const Reportes = () => {
                       <span className="font-bold text-gray-900">{formatCLP(item.total)}</span>
                     </div>
                   ))}
-                  {getResumenPorTipoAtencion().length === 0 && (
+                  {resumenPorTipoAtencion.length === 0 && (
                     <p className="text-center text-gray-500 py-4">No hay actividades registradas</p>
                   )}
                 </div>
@@ -438,32 +497,37 @@ const Reportes = () => {
                 <Printer className="h-4 w-4" />
                 <span>Imprimir</span>
               </button>
-              <button
-                onClick={() => handleExport('pdf')}
-                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1"
-              >
-                <Download className="h-4 w-4" />
-                <span>PDF</span>
-              </button>
-              <button
-                onClick={() => handleExport('excel')}
-                className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1"
-              >
-                <Download className="h-4 w-4" />
-                <span>Excel</span>
-              </button>
+              {['pdf', 'excel', 'csv', 'json'].map((type) => (
+                <button
+                  key={type}
+                  onClick={() => handleExport(type as 'pdf' | 'excel' | 'csv' | 'json')}
+                  className={`px-3 py-1 rounded text-sm flex items-center space-x-1 text-white ${
+                    type === 'pdf'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : type === 'excel'
+                      ? 'bg-green-600 hover:bg-green-700'
+                      : type === 'csv'
+                      ? 'bg-slate-700 hover:bg-slate-800'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
+                >
+                  <Download className="h-4 w-4" />
+                  <span>{type.toUpperCase()}</span>
+                </button>
+              ))}
             </div>
           )}
         </div>
         
-        {getAtencionesPorProfesional().length === 0 ? (
-          <div className="text-center py-8">
-            <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">No hay atenciones registradas para este período</p>
-          </div>
+        {atencionesPorProfesional.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="Sin atenciones para este período"
+            description="Cambia el mes o el profesional para revisar actividad y pagos del período."
+          />
         ) : (
           <div className="space-y-4">
-            {getAtencionesPorProfesional().map(({ profesional, atenciones, total, pagosPendientes }) => (
+            {atencionesPorProfesional.map(({ profesional, atenciones, total, pagosPendientes }) => (
               <div key={profesional.id} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex justify-between items-start mb-3">
                   <div>
@@ -528,10 +592,11 @@ const Reportes = () => {
         </h2>
         
         {atenciones.length === 0 ? (
-          <div className="text-center py-8">
-            <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">No hay atenciones registradas para este mes</p>
-          </div>
+            <EmptyState
+              icon={SearchX}
+              title="Sin atenciones en este mes"
+              description="No hay registros para el período seleccionado con los filtros actuales."
+            />
         ) : (
           <>
             <div className="space-y-3 md:hidden">

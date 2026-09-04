@@ -11,6 +11,8 @@ import { atencionesService, pacientesService } from '@/utils/supabase'
 import { formatCLP } from '@/utils/currency'
 import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { canManageAtencion, canManagePayment, hasPermission } from '@/utils/permissions'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
 
 const AtencionesPorPaciente = () => {
   const { user } = useAuth()
@@ -27,6 +29,8 @@ const AtencionesPorPaciente = () => {
   const [atenciones, setAtenciones] = useState<Atencion[]>([])
   const [loadingAtenciones, setLoadingAtenciones] = useState(false)
   const [pagoFilter, setPagoFilter] = useState<'todos' | 'pagadas' | 'pendientes'>('todos')
+  const [estadoCitaFilter, setEstadoCitaFilter] = useState<'todos' | 'por_confirmar' | 'confirmada' | 'cancelada' | 'reagendada'>('todos')
+  const [atencionSearch, setAtencionSearch] = useState('')
 
   useEffect(() => {
     loadPacientes()
@@ -95,17 +99,26 @@ const AtencionesPorPaciente = () => {
   }, [pacienteSearch, pacientes])
 
   const atencionesFiltradas = useMemo(() => {
-    if (pagoFilter === 'pagadas') return atenciones.filter(a => a.pagado)
-    if (pagoFilter === 'pendientes') return atenciones.filter(a => !a.pagado)
-    return atenciones
-  }, [atenciones, pagoFilter])
+    const normalizedSearch = atencionSearch.trim().toLowerCase()
+
+    return atenciones.filter((atencion) => {
+      const matchesPago =
+        pagoFilter === 'todos' ? true : pagoFilter === 'pagadas' ? atencion.pagado : !atencion.pagado
+      const matchesEstado =
+        estadoCitaFilter === 'todos' ? true : (atencion.estado_cita || 'por_confirmar') === estadoCitaFilter
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        (atencion.profesional?.nombre || '').toLowerCase().includes(normalizedSearch) ||
+        (atencion.tipos_atencion?.nombre || '').toLowerCase().includes(normalizedSearch) ||
+        (atencion.numero_boleta || '').toLowerCase().includes(normalizedSearch) ||
+        atencion.fecha.includes(normalizedSearch)
+
+      return matchesPago && matchesEstado && matchesSearch
+    })
+  }, [atencionSearch, atenciones, estadoCitaFilter, pagoFilter])
 
   if (loadingPacientes) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando pacientes..." />
   }
 
   return (
@@ -115,7 +128,7 @@ const AtencionesPorPaciente = () => {
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Paciente</label>
             <div className="relative">
@@ -177,24 +190,52 @@ const AtencionesPorPaciente = () => {
               <option value="pendientes">Pendientes</option>
             </select>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Estado de Cita</label>
+            <select
+              value={estadoCitaFilter}
+              onChange={(e) => setEstadoCitaFilter(e.target.value as typeof estadoCitaFilter)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+              disabled={!selectedPaciente}
+            >
+              <option value="todos">Todos</option>
+              <option value="por_confirmar">Por confirmar</option>
+              <option value="confirmada">Confirmada</option>
+              <option value="cancelada">Cancelada</option>
+              <option value="reagendada">Reagendada</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Buscar en atenciones</label>
+          <input
+            type="text"
+            value={atencionSearch}
+            onChange={(e) => setAtencionSearch(e.target.value)}
+            placeholder="Filtra por profesional, tipo, boleta o fecha..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+            disabled={!selectedPaciente}
+          />
         </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-6">
         {!selectedPaciente ? (
-          <div className="text-center py-10">
-            <Search className="h-14 w-14 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">Busca y selecciona un paciente para ver sus atenciones</p>
-          </div>
+          <EmptyState
+            icon={Search}
+            title="Selecciona un paciente"
+            description="Busca por nombre o RUT para revisar el historial completo, pagos y citas registradas."
+          />
         ) : loadingAtenciones ? (
-          <div className="flex justify-center items-center h-48">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-          </div>
+          <PageLoader compact label="Cargando historial del paciente..." />
         ) : atencionesFiltradas.length === 0 ? (
-          <div className="text-center py-10">
-            <FileText className="h-14 w-14 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No hay atenciones para este paciente con el filtro seleccionado</p>
-          </div>
+          <EmptyState
+            icon={FileText}
+            title="Sin resultados para este paciente"
+            description="No hay atenciones que coincidan con los filtros de pago, estado o búsqueda aplicada."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">

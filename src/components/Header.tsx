@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import Notifications from '@/components/Notifications'
+import GlobalSearch from '@/components/GlobalSearch'
 import { Atencion } from '@/types/database'
 import { atencionesService } from '@/utils/supabase'
 import { getRoleLabel } from '@/utils/permissions'
@@ -141,6 +142,8 @@ const Header = ({ onMenuToggle }: HeaderProps) => {
               </div>
             ) : null}
           </div>
+
+          <GlobalSearch />
 
           <div className="flex items-center justify-end gap-3">
             <Notifications appointments={appointments} />

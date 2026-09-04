@@ -7,6 +7,9 @@ import { CheckCircle2, Calendar, User, DollarSign, ChevronDown, ChevronUp, Alert
 import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { formatCLP } from '@/utils/currency'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 interface PacienteConDeuda extends Paciente {
   atenciones_pendientes: Atencion[]
@@ -28,6 +31,7 @@ const PagosPendientes = () => {
   const [expandedPaciente, setExpandedPaciente] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [showOnlyOverdue, setShowOnlyOverdue] = useState(false)
+  const [pacienteToMarkPaid, setPacienteToMarkPaid] = useState<PacienteConDeuda | null>(null)
   const { currentCentro, currentSucursal } = useSucursal()
 
   const normalizePhoneCL = (raw: string) => {
@@ -238,10 +242,6 @@ const PagosPendientes = () => {
   }
 
   const handleMarcarTodoPagado = async (paciente: PacienteConDeuda) => {
-    if (!window.confirm(`¿Estás seguro de marcar como pagadas todas las sesiones pendientes de ${paciente.nombre}?`)) {
-      return
-    }
-
     try {
       // Actualizar todas las atenciones del paciente a pagado: true
       const promesas = paciente.atenciones_pendientes.map(atencion => 
@@ -250,6 +250,7 @@ const PagosPendientes = () => {
       await Promise.all(promesas)
       
       toast.success(`Se registraron todos los pagos de ${paciente.nombre}`)
+      setPacienteToMarkPaid(null)
       loadPendientes() // Recargar para actualizar la lista
     } catch (error) {
       console.error('Error al registrar pagos:', error)
@@ -258,11 +259,7 @@ const PagosPendientes = () => {
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Calculando pagos pendientes..." />
   }
 
   return (
@@ -313,11 +310,11 @@ const PagosPendientes = () => {
       </div>
 
       {mesesFiltrados.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-md p-10 text-center">
-          <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Sin resultados pendientes</h2>
-          <p className="text-gray-600">No hay registros pendientes con los filtros actuales.</p>
-        </div>
+        <EmptyState
+          icon={CheckCircle2}
+          title="Sin resultados pendientes"
+          description="No hay registros pendientes con los filtros actuales. Prueba cambiando la búsqueda o quitando el filtro de atrasadas."
+        />
       ) : (
         <div className="space-y-6">
           {mesesFiltrados.map((mesGroup) => (
@@ -392,7 +389,7 @@ const PagosPendientes = () => {
                               </button>
                             )}
                             <button
-                              onClick={() => handleMarcarTodoPagado(paciente)}
+                              onClick={() => setPacienteToMarkPaid(paciente)}
                               className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm text-sm font-medium"
                             >
                               <CheckCircle2 className="w-4 h-4 mr-2" />
@@ -448,6 +445,21 @@ const PagosPendientes = () => {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pacienteToMarkPaid}
+        title="Marcar sesiones como pagadas"
+        description={pacienteToMarkPaid ? `Vas a marcar como pagadas todas las sesiones pendientes de ${pacienteToMarkPaid.nombre}.` : ''}
+        confirmLabel="Marcar todo pagado"
+        cancelLabel="Cancelar"
+        tone="primary"
+        onCancel={() => setPacienteToMarkPaid(null)}
+        onConfirm={() => {
+          if (pacienteToMarkPaid) {
+            void handleMarcarTodoPagado(pacienteToMarkPaid)
+          }
+        }}
+      />
     </div>
   )
 }

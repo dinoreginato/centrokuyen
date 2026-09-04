@@ -6,6 +6,9 @@ import { useSucursal } from '@/contexts/SucursalContext'
 import { Profesional } from '@/types/database'
 import { profesionalesService } from '@/utils/supabase'
 import { formatCLP } from '@/utils/currency'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 const ProfesionalesList = () => {
   const { currentCentro, currentSucursal } = useSucursal()
@@ -13,6 +16,7 @@ const ProfesionalesList = () => {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [profesionalToDelete, setProfesionalToDelete] = useState<Profesional | null>(null)
   const itemsPerPage = 9
 
   useEffect(() => {
@@ -33,13 +37,10 @@ const ProfesionalesList = () => {
   }
 
   const deleteProfesional = async (id: string) => {
-    if (!confirm('¿Está seguro de que desea eliminar este profesional?')) {
-      return
-    }
-
     try {
       await profesionalesService.delete(id)
       toast.success('Profesional eliminado exitosamente')
+      setProfesionalToDelete(null)
       loadProfesionales()
     } catch (error) {
       toast.error('Error al eliminar profesional')
@@ -65,11 +66,7 @@ const ProfesionalesList = () => {
   }, [searchTerm])
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando profesionales..." />
   }
 
   return (
@@ -94,15 +91,26 @@ const ProfesionalesList = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-blue focus:border-transparent"
           />
+          <div className="mt-2 text-sm text-gray-500">
+            {filteredProfesionales.length} resultado(s) encontrados
+          </div>
         </div>
 
         {filteredProfesionales.length === 0 ? (
-          <div className="text-center py-8">
-            <Stethoscope className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">
-              {searchTerm ? 'No se encontraron profesionales' : 'No hay profesionales registrados'}
-            </p>
-          </div>
+          <EmptyState
+            icon={Stethoscope}
+            title={searchTerm ? 'Sin profesionales coincidentes' : 'No hay profesionales registrados'}
+            description={searchTerm ? 'Prueba con otro nombre, especialidad o email para encontrar profesionales.' : 'Crea profesionales para administrar pagos, agenda y disponibilidad desde una sola ficha.'}
+            action={!searchTerm ? (
+              <Link
+                to="/profesionales/nuevo"
+                className="inline-flex items-center gap-2 rounded-lg bg-medical-blue px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Crear primer profesional</span>
+              </Link>
+            ) : undefined}
+          />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {paginatedProfesionales.map((profesional) => (
@@ -125,7 +133,7 @@ const ProfesionalesList = () => {
                       <Edit className="h-4 w-4" />
                     </Link>
                     <button
-                      onClick={() => deleteProfesional(profesional.id)}
+                      onClick={() => setProfesionalToDelete(profesional)}
                       className="text-red-600 hover:text-red-800 p-1"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -193,6 +201,21 @@ const ProfesionalesList = () => {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!profesionalToDelete}
+        title="Eliminar profesional"
+        description={profesionalToDelete ? `Vas a eliminar a ${profesionalToDelete.nombre}. Solo debería hacerse si ya no atenderá en el sistema.` : ''}
+        confirmLabel="Eliminar profesional"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => setProfesionalToDelete(null)}
+        onConfirm={() => {
+          if (profesionalToDelete) {
+            void deleteProfesional(profesionalToDelete.id)
+          }
+        }}
+      />
     </div>
   )
 }

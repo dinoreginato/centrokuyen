@@ -5,6 +5,9 @@ import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Paciente } from '@/types/database'
 import { pacientesService } from '@/utils/supabase'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 const PacientesList = () => {
   const { currentCentro, currentSucursal } = useSucursal()
@@ -12,6 +15,7 @@ const PacientesList = () => {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [pacienteToDelete, setPacienteToDelete] = useState<Paciente | null>(null)
   const itemsPerPage = 9
 
   useEffect(() => {
@@ -32,13 +36,10 @@ const PacientesList = () => {
   }
 
   const deletePaciente = async (id: string) => {
-    if (!confirm('¿Está seguro de que desea eliminar este paciente?')) {
-      return
-    }
-
     try {
       await pacientesService.delete(id)
       toast.success('Paciente eliminado exitosamente')
+      setPacienteToDelete(null)
       loadPacientes()
     } catch (error) {
       toast.error('Error al eliminar paciente')
@@ -64,11 +65,7 @@ const PacientesList = () => {
   }, [searchTerm])
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando pacientes..." />
   }
 
   return (
@@ -93,15 +90,26 @@ const PacientesList = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-blue focus:border-transparent"
           />
+          <div className="mt-2 text-sm text-gray-500">
+            {filteredPacientes.length} resultado(s) encontrados
+          </div>
         </div>
 
         {filteredPacientes.length === 0 ? (
-          <div className="text-center py-8">
-            <User className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">
-              {searchTerm ? 'No se encontraron pacientes' : 'No hay pacientes registrados'}
-            </p>
-          </div>
+          <EmptyState
+            icon={User}
+            title={searchTerm ? 'Sin pacientes coincidentes' : 'No hay pacientes registrados'}
+            description={searchTerm ? 'Prueba con otro nombre, RUT o dirección para encontrar pacientes.' : 'Cuando registres pacientes nuevos, aparecerán aquí con acceso rápido a edición.'}
+            action={!searchTerm ? (
+              <Link
+                to="/pacientes/nuevo"
+                className="inline-flex items-center gap-2 rounded-lg bg-medical-green px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Crear primer paciente</span>
+              </Link>
+            ) : undefined}
+          />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {paginatedPacientes.map((paciente) => (
@@ -124,7 +132,7 @@ const PacientesList = () => {
                       <Edit className="h-4 w-4" />
                     </Link>
                     <button
-                      onClick={() => deletePaciente(paciente.id)}
+                      onClick={() => setPacienteToDelete(paciente)}
                       className="text-red-600 hover:text-red-800 p-1"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -187,6 +195,21 @@ const PacientesList = () => {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!pacienteToDelete}
+        title="Eliminar paciente"
+        description={pacienteToDelete ? `Vas a desactivar a ${pacienteToDelete.nombre}. El paciente dejará de aparecer en los listados activos.` : ''}
+        confirmLabel="Eliminar paciente"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => setPacienteToDelete(null)}
+        onConfirm={() => {
+          if (pacienteToDelete) {
+            void deletePaciente(pacienteToDelete.id)
+          }
+        }}
+      />
     </div>
   )
 }

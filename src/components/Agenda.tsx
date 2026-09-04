@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Edit, Trash2, Settings, MessageCircle, DollarSign, CheckCircle, XCircle, CalendarCheck2, CalendarX2, Repeat } from 'lucide-react'
+import { Plus, Edit, Trash2, Settings, MessageCircle, DollarSign, CheckCircle, XCircle, CalendarCheck2, CalendarX2, Repeat, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
@@ -10,6 +10,9 @@ import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterva
 import { es } from 'date-fns/locale'
 import { getEstadoCitaBadgeClass, getEstadoCitaCardClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { canManageAtencion, canManagePayment, hasPermission } from '@/utils/permissions'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 const Agenda = () => {
   const { user } = useAuth()
@@ -20,6 +23,9 @@ const Agenda = () => {
   const [currentWeek, setCurrentWeek] = useState(new Date())
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('week')
+  const [estadoFilter, setEstadoFilter] = useState<'todos' | 'por_confirmar' | 'confirmada' | 'cancelada' | 'reagendada'>('todos')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [atencionToDelete, setAtencionToDelete] = useState<Atencion | null>(null)
 
   useEffect(() => {
     if (currentSucursal) {
@@ -142,13 +148,10 @@ const Agenda = () => {
   }
 
   const deleteAtencion = async (id: string) => {
-    if (!confirm('¿Está seguro de que desea eliminar esta atención?')) {
-      return
-    }
-
     try {
       await atencionesService.delete(id)
       toast.success('Atención eliminada exitosamente')
+      setAtencionToDelete(null)
       loadData()
     } catch (error) {
       toast.error('Error al eliminar atención')
@@ -214,6 +217,22 @@ Gracias 🙌🏻`
     const edad = differenceInYears(new Date(), date)
     return edad >= 0 ? edad : null
   }
+
+  const atencionesFiltradas = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+
+    return atenciones.filter((atencion) => {
+      const matchesEstado =
+        estadoFilter === 'todos' ? true : (atencion.estado_cita || 'por_confirmar') === estadoFilter
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        (atencion.paciente?.nombre || '').toLowerCase().includes(normalizedSearch) ||
+        (atencion.profesional?.nombre || '').toLowerCase().includes(normalizedSearch) ||
+        (atencion.tipos_atencion?.nombre || atencion.tipo_atencion || '').toLowerCase().includes(normalizedSearch)
+
+      return matchesEstado && matchesSearch
+    })
+  }, [atenciones, estadoFilter, searchTerm])
 
   const renderAtencionCard = (atencion: Atencion, compact = false) => (
     <div
@@ -354,7 +373,7 @@ Gracias 🙌🏻`
               <Edit className="h-4 w-4" />
             </Link>
             <button
-              onClick={() => deleteAtencion(atencion.id)}
+                onClick={() => setAtencionToDelete(atencion)}
               className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600"
               title="Eliminar"
             >
@@ -367,11 +386,7 @@ Gracias 🙌🏻`
   )
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando agenda..." />
   }
 
   return (
@@ -447,9 +462,33 @@ Gracias 🙌🏻`
           </div>
         </div>
 
+        <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <label className="relative">
+            <Search className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por paciente, profesional o tipo..."
+              className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-3 text-sm focus:border-medical-blue focus:ring-medical-blue"
+            />
+          </label>
+          <select
+            value={estadoFilter}
+            onChange={(e) => setEstadoFilter(e.target.value as typeof estadoFilter)}
+            className="rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-medical-blue focus:ring-medical-blue"
+          >
+            <option value="todos">Todos los estados</option>
+            <option value="por_confirmar">Por confirmar</option>
+            <option value="confirmada">Confirmada</option>
+            <option value="cancelada">Cancelada</option>
+            <option value="reagendada">Reagendada</option>
+          </select>
+        </div>
+
         <div className="space-y-4 md:hidden">
           {daysToShow.map((day) => {
-            const dayAppointments = atenciones
+            const dayAppointments = atencionesFiltradas
               .filter((a) => isSameDay(parseISO(a.fecha), day))
               .sort((a, b) => a.hora.localeCompare(b.hora))
 
@@ -472,7 +511,7 @@ Gracias 🙌🏻`
 
                 <div className="p-3 space-y-3 bg-gray-50/30">
                   {dayAppointments.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic text-center py-3">Sin citas</p>
+                    <p className="text-sm text-gray-400 italic text-center py-3">Sin citas con los filtros actuales</p>
                   ) : (
                     dayAppointments.map((atencion) => renderAtencionCard(atencion, true))
                   )}
@@ -485,7 +524,7 @@ Gracias 🙌🏻`
         <div className="hidden md:block overflow-x-auto pb-4">
           <div className={`grid gap-3 ${viewMode === 'month' ? 'grid-cols-1 md:grid-cols-7 min-w-[1000px] md:min-w-0' : viewMode === 'week' ? 'grid-cols-1 md:grid-cols-7 min-w-[1000px] md:min-w-0' : 'grid-cols-1'}`}>
             {daysToShow.map((day) => {
-              const dayAppointments = atenciones
+              const dayAppointments = atencionesFiltradas
                 .filter((a) => isSameDay(parseISO(a.fecha), day))
                 .sort((a, b) => a.hora.localeCompare(b.hora))
               
@@ -509,7 +548,7 @@ Gracias 🙌🏻`
                   <div className="p-2 space-y-2 flex-1 min-h-[200px] bg-gray-50/30">
                     {dayAppointments.length === 0 ? (
                       <div className="h-full flex items-center justify-center">
-                        <p className="text-xs text-gray-400 italic">Sin citas</p>
+                        <p className="text-xs text-gray-400 italic">Sin citas con filtros</p>
                       </div>
                     ) : (
                       dayAppointments.map((atencion) => renderAtencionCard(atencion))
@@ -521,6 +560,29 @@ Gracias 🙌🏻`
           </div>
         </div>
       </div>
+
+      {atencionesFiltradas.length === 0 && (
+        <EmptyState
+          icon={CalendarCheck2}
+          title="No hay citas para mostrar"
+          description="Los filtros actuales no devolvieron resultados. Prueba con otro estado o limpia la búsqueda."
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!atencionToDelete}
+        title="Eliminar atención"
+        description={atencionToDelete ? `Vas a eliminar la cita de ${atencionToDelete.paciente?.nombre || 'este paciente'} del ${atencionToDelete.fecha} a las ${atencionToDelete.hora.substring(0, 5)}.` : ''}
+        confirmLabel="Eliminar cita"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => setAtencionToDelete(null)}
+        onConfirm={() => {
+          if (atencionToDelete) {
+            void deleteAtencion(atencionToDelete.id)
+          }
+        }}
+      />
     </div>
   )
 }

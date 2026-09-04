@@ -7,6 +7,7 @@ import { formatCLP } from './currency';
 export const exportToPDF = {
   // Export monthly report to PDF
   monthlyReport: (data: {
+    centerName?: string;
     month: string;
     year: number;
     totalIncome: number;
@@ -14,8 +15,11 @@ export const exportToPDF = {
     totalProfit: number;
     professionalPayments: Array<{
       professional: string;
+      speciality?: string;
       appointments: number;
+      totalIncome?: number;
       totalPayment: number;
+      pendingPayment?: number;
       paymentType: string;
     }>;
     costs: {
@@ -27,7 +31,7 @@ export const exportToPDF = {
     
     // Title
     doc.setFontSize(20);
-    doc.text('Reporte Mensual - Centro Kuyen', 105, 20, { align: 'center' });
+    doc.text(`Reporte Mensual - ${data.centerName || 'Centro Médico'}`, 105, 20, { align: 'center' });
     
     // Period
     doc.setFontSize(12);
@@ -57,9 +61,10 @@ export const exportToPDF = {
     data.professionalPayments.forEach((payment, index) => {
       doc.setFontSize(12);
       doc.text(`${index + 1}. ${payment.professional}`, 20, yPosition);
-      doc.text(`   Atenciones: ${payment.appointments}`, 20, yPosition + 8);
-      doc.text(`   Pago Total: ${formatCLP(payment.totalPayment)} (${payment.paymentType})`, 20, yPosition + 16);
-      yPosition += 25;
+      doc.text(`   Especialidad: ${payment.speciality || '-'}`, 20, yPosition + 8);
+      doc.text(`   Atenciones: ${payment.appointments} · Ingresos: ${formatCLP(payment.totalIncome || 0)}`, 20, yPosition + 16);
+      doc.text(`   Pago Total: ${formatCLP(payment.totalPayment)} · Pendiente: ${formatCLP(payment.pendingPayment || 0)} (${payment.paymentType})`, 20, yPosition + 24);
+      yPosition += 33;
       
       // Add new page if needed
       if (yPosition > 250) {
@@ -80,7 +85,14 @@ export const exportToPDF = {
   },
 
   // Export professional report to PDF
-  professionalReport: (professional: Profesional, appointments: Atencion[], month: string, year: number) => {
+  professionalReport: (
+    professional: Profesional,
+    appointments: Atencion[],
+    month: string,
+    year: number,
+    totalPayment: number,
+    centerName?: string
+  ) => {
     const doc = new jsPDF();
     
     // Calculate payment type and value
@@ -93,6 +105,7 @@ export const exportToPDF = {
     
     // Period
     doc.setFontSize(12);
+    doc.text(centerName || 'Centro Médico', 105, 28, { align: 'center' });
     doc.text(`Período: ${month} ${year}`, 105, 35, { align: 'center' });
     
     // Professional info
@@ -116,13 +129,10 @@ export const exportToPDF = {
     
     const totalAppointments = appointments.length;
     const totalIncome = appointments.reduce((sum, app) => sum + (app.valor_cobrado || 0), 0);
-    const totalPayment = tipoPago === 'porcentaje' 
-      ? (totalIncome * valorPago) / 100
-      : totalAppointments * valorPago;
     
     doc.setFontSize(12);
     doc.text(`Total de Atenciones: ${totalAppointments}`, 20, 125);
-    doc.text(`Ingresos Totales: ${formatCLP(totalIncome)}`, 20, 125);
+    doc.text(`Ingresos Totales: ${formatCLP(totalIncome)}`, 20, 135);
     doc.text(`Pago al Profesional: ${formatCLP(totalPayment)}`, 20, 145);
     
     // Detailed appointments
@@ -156,6 +166,7 @@ export const exportToPDF = {
 export const exportToExcel = {
   // Export monthly report to Excel
   monthlyReport: (data: {
+    centerName?: string;
     month: string;
     year: number;
     totalIncome: number;
@@ -163,8 +174,11 @@ export const exportToExcel = {
     totalProfit: number;
     professionalPayments: Array<{
       professional: string;
+      speciality?: string;
       appointments: number;
+      totalIncome?: number;
       totalPayment: number;
+      pendingPayment?: number;
       paymentType: string;
     }>;
     costs: {
@@ -178,7 +192,7 @@ export const exportToExcel = {
     
     // Summary sheet
     const summaryData = [
-      ['REPORTE MENSUAL - CENTRO MÉDICO', ''],
+      [`REPORTE MENSUAL - ${(data.centerName || 'CENTRO MÉDICO').toUpperCase()}`, ''],
       [`Período: ${data.month} ${data.year}`, ''],
       ['', ''],
       ['RESUMEN FINANCIERO', ''],
@@ -194,8 +208,8 @@ export const exportToExcel = {
       ...data.professionalPayments.map(p => [
         p.professional,
         `Atenciones: ${p.appointments}`,
-        `Pago: ${formatCLP(p.totalPayment)}`,
-        `Tipo: ${p.paymentType}`
+        `Ingresos: ${formatCLP(p.totalIncome || 0)}`,
+        `Pago: ${formatCLP(p.totalPayment)} · Pendiente: ${formatCLP(p.pendingPayment || 0)} · Tipo: ${p.paymentType}`
       ])
     ];
     
@@ -239,9 +253,9 @@ export const exportToExcel = {
       ['PROFESIONAL', 'ESPECIALIDAD', 'ATENCIONES', 'INGRESOS TOTALES', 'PAGO AL PROFESIONAL', 'TIPO DE PAGO'],
       ...data.professionalPayments.map(p => [
         p.professional,
-        '', // Speciality would need to be added
+        p.speciality || '-',
         p.appointments,
-        '', // Total income per professional would need calculation
+        p.totalIncome || 0,
         p.totalPayment,
         p.paymentType
       ])
@@ -254,7 +268,14 @@ export const exportToExcel = {
   },
 
   // Export professional report to Excel
-  professionalReport: (professional: Profesional, appointments: Atencion[], month: string, year: number) => {
+  professionalReport: (
+    professional: Profesional,
+    appointments: Atencion[],
+    month: string,
+    year: number,
+    totalPayment: number,
+    centerName?: string
+  ) => {
     const wb = XLSX.utils.book_new();
     
     // Professional info sheet
@@ -263,6 +284,7 @@ export const exportToExcel = {
     
     const infoData = [
       ['REPORTE PROFESIONAL', ''],
+      [centerName || 'Centro Médico', ''],
       [`Período: ${month} ${year}`, ''],
       ['', ''],
       ['INFORMACIÓN DEL PROFESIONAL', ''],
@@ -274,9 +296,7 @@ export const exportToExcel = {
       ['RESUMEN', ''],
       ['Total Atenciones', appointments.length],
       ['Ingresos Totales', appointments.reduce((sum, app) => sum + (app.valor_cobrado || 0), 0)],
-      ['Pago al Profesional', tipoPago === 'porcentaje' 
-        ? (appointments.reduce((sum, app) => sum + (app.valor_cobrado || 0), 0) * valorPago) / 100
-        : appointments.length * valorPago]
+      ['Pago al Profesional', totalPayment]
     ];
     
     const infoWs = XLSX.utils.aoa_to_sheet(infoData);
@@ -305,7 +325,16 @@ export const exportToExcel = {
 export const exportUtils = {
   // Export any data array to CSV
   toCSV: (data: any[], filename: string) => {
-    const csvContent = data.map(row => Object.values(row).join(',')).join('\n');
+    if (data.length === 0) return;
+    const headers = Object.keys(data[0]);
+    const escapeValue = (value: unknown) => {
+      const serialized = value == null ? '' : String(value);
+      return `"${serialized.replace(/"/g, '""')}"`;
+    };
+    const csvContent = [
+      headers.map(escapeValue).join(','),
+      ...data.map(row => headers.map(key => escapeValue(row[key])).join(','))
+    ].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -316,7 +345,7 @@ export const exportUtils = {
   },
 
   // Export any data array to JSON
-  toJSON: (data: any[], filename: string) => {
+  toJSON: (data: unknown, filename: string) => {
     const jsonContent = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonContent], { type: 'application/json' });
     const url = window.URL.createObjectURL(blob);

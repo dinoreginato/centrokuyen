@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Save, Building, Phone, CreditCard, Users, Plus, CheckCircle2, Pencil, Trash2, History, RefreshCw } from 'lucide-react'
+import { Save, Building, Phone, CreditCard, Users, Plus, CheckCircle2, Pencil, Trash2, History, RefreshCw, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { auditService, centrosService } from '@/utils/supabase'
 import { AuditLog } from '@/types/database'
 import SucursalesList from './SucursalesList'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import EmptyState from '@/components/ui/EmptyState'
+import PageLoader from '@/components/ui/PageLoader'
 
 const Configuracion = () => {
   const { currentCentro, centros, setCentro } = useSucursal()
@@ -15,6 +18,13 @@ const Configuracion = () => {
   const [creatingCentro, setCreatingCentro] = useState(false)
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [loadingAudit, setLoadingAudit] = useState(true)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [auditFilters, setAuditFilters] = useState({
+    tableName: 'todos',
+    action: 'todos',
+    actorQuery: '',
+    search: ''
+  })
   const [formData, setFormData] = useState({
     nombre: '',
     direccion: '',
@@ -42,12 +52,12 @@ const Configuracion = () => {
 
   useEffect(() => {
     loadAuditLogs()
-  }, [])
+  }, [auditFilters])
 
   const loadAuditLogs = async () => {
     try {
       setLoadingAudit(true)
-      const logs = await auditService.getRecent(20)
+      const logs = await auditService.getRecent(50, auditFilters)
       setAuditLogs(logs)
     } catch (error) {
       console.error('Error loading audit logs:', error)
@@ -130,13 +140,11 @@ const Configuracion = () => {
       return
     }
 
-    const confirmed = confirm(`¿Seguro que deseas eliminar el centro "${currentCentro.nombre}"? Esta acción solo es posible si no tiene datos asociados.`)
-    if (!confirmed) return
-
     try {
       setDeleting(true)
       await centrosService.delete(currentCentro.id)
       toast.success('Centro eliminado exitosamente')
+      setShowDeleteDialog(false)
       setTimeout(() => window.location.reload(), 600)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo eliminar el centro'
@@ -189,11 +197,7 @@ const Configuracion = () => {
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando configuración del centro..." />
   }
 
   return (
@@ -265,7 +269,7 @@ const Configuracion = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={handleDeleteCentro}
+                  onClick={() => setShowDeleteDialog(true)}
                   disabled={deleting || saving || centros.length <= 1}
                   className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -478,14 +482,74 @@ const Configuracion = () => {
           </button>
         </div>
 
+        <div className="mb-4 grid gap-3 md:grid-cols-4">
+          <label className="relative md:col-span-2">
+            <Search className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={auditFilters.search}
+              onChange={(e) => setAuditFilters(prev => ({ ...prev, search: e.target.value }))}
+              placeholder="Buscar por entidad o registro"
+              className="w-full rounded-md border border-gray-300 py-2 pl-10 pr-3 text-sm focus:border-medical-blue focus:ring-medical-blue"
+            />
+          </label>
+
+          <select
+            value={auditFilters.tableName}
+            onChange={(e) => setAuditFilters(prev => ({ ...prev, tableName: e.target.value }))}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-medical-blue focus:ring-medical-blue"
+          >
+            <option value="todos">Todas las entidades</option>
+            <option value="atenciones">Atenciones</option>
+            <option value="pacientes">Pacientes</option>
+            <option value="profesionales">Profesionales</option>
+            <option value="usuarios">Usuarios</option>
+            <option value="costos">Costos</option>
+            <option value="centros">Centros</option>
+            <option value="sucursales">Sucursales</option>
+            <option value="tipos_atencion">Tipos de atención</option>
+          </select>
+
+          <select
+            value={auditFilters.action}
+            onChange={(e) => setAuditFilters(prev => ({ ...prev, action: e.target.value }))}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-medical-blue focus:ring-medical-blue"
+          >
+            <option value="todos">Todas las acciones</option>
+            <option value="INSERT">Creación</option>
+            <option value="UPDATE">Edición</option>
+            <option value="SOFT_DELETE">Eliminación lógica</option>
+          </select>
+
+          <input
+            type="text"
+            value={auditFilters.actorQuery}
+            onChange={(e) => setAuditFilters(prev => ({ ...prev, actorQuery: e.target.value }))}
+            placeholder="Filtrar por actor o email"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-medical-blue focus:ring-medical-blue md:col-span-2"
+          />
+
+          <button
+            type="button"
+            onClick={() => setAuditFilters({ tableName: 'todos', action: 'todos', actorQuery: '', search: '' })}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Limpiar filtros
+          </button>
+
+          <div className="flex items-center justify-end text-sm text-gray-500 md:col-span-1">
+            {auditLogs.length} evento(s)
+          </div>
+        </div>
+
         {loadingAudit ? (
-          <div className="flex justify-center py-8">
-            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-medical-blue"></div>
-          </div>
+          <PageLoader compact label="Actualizando bitácora..." />
         ) : auditLogs.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">
-            Todavía no hay eventos registrados en la bitácora.
-          </div>
+          <EmptyState
+            icon={History}
+            title="Sin eventos para los filtros actuales"
+            description="Prueba cambiando la búsqueda, la entidad o la acción para encontrar registros en la bitácora."
+          />
         ) : (
           <div className="space-y-3">
             {auditLogs.map(log => (
@@ -518,6 +582,18 @@ const Configuracion = () => {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Eliminar centro"
+        description={currentCentro ? `Vas a eliminar el centro "${currentCentro.nombre}". Esta acción solo funciona si no tiene datos asociados.` : 'Selecciona un centro para eliminar.'}
+        confirmLabel="Eliminar centro"
+        cancelLabel="Cancelar"
+        tone="danger"
+        loading={deleting}
+        onCancel={() => setShowDeleteDialog(false)}
+        onConfirm={handleDeleteCentro}
+      />
     </div>
   )
 }

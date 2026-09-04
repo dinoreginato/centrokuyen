@@ -63,12 +63,44 @@ export const auditService = {
     }
   },
 
-  async getRecent(limit = 50): Promise<AuditLog[]> {
-    const { data, error } = await supabase
+  async getRecent(
+    limit = 50,
+    filters?: {
+      tableName?: string
+      action?: string
+      actorQuery?: string
+      search?: string
+    }
+  ): Promise<AuditLog[]> {
+    let query = supabase
       .from('audit_logs')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(limit)
+
+    if (filters?.tableName && filters.tableName !== 'todos') {
+      query = query.eq('table_name', filters.tableName)
+    }
+
+    if (filters?.action && filters.action !== 'todos') {
+      query = query.eq('action', filters.action)
+    }
+
+    if (filters?.actorQuery) {
+      const term = filters.actorQuery.trim()
+      if (term) {
+        query = query.or(`actor_name.ilike.%${term}%,actor_email.ilike.%${term}%`)
+      }
+    }
+
+    if (filters?.search) {
+      const term = filters.search.trim()
+      if (term) {
+        query = query.or(`table_name.ilike.%${term}%,record_id.ilike.%${term}%`)
+      }
+    }
+
+    const { data, error } = await query
 
     if (error) throw error
     return data || []
