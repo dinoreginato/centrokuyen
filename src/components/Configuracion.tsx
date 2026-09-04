@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { auditService, centrosService } from '@/utils/supabase'
 import { AuditLog } from '@/types/database'
+import { formatCLP } from '@/utils/currency'
 import SucursalesList from './SucursalesList'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
@@ -154,9 +155,203 @@ const Configuracion = () => {
     }
   }
 
+  const ESTADO_CITA_LABELS: Record<string, string> = {
+    por_confirmar: 'Por confirmar',
+    confirmada: 'Confirmada',
+    cancelada: 'Cancelada',
+    reagendada: 'Reagendada'
+  }
+
+  const ESTADO_ASISTENCIA_LABELS: Record<string, string> = {
+    pendiente: 'Pendiente',
+    asistio: 'Asistió',
+    no_asistio: 'No asistió'
+  }
+
+  const getAuditObject = (data?: Record<string, unknown> | null) => {
+    if (!data || typeof data !== 'object') return {}
+    return data
+  }
+
+  const getNestedNombre = (value: unknown) => {
+    if (!value || typeof value !== 'object' || !('nombre' in value)) return null
+    return typeof value.nombre === 'string' ? value.nombre : null
+  }
+
+  const formatAuditDate = (value: unknown) => {
+    if (typeof value !== 'string' || !value) return null
+    const date = new Date(`${value}T00:00:00`)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleDateString()
+  }
+
+  const formatAuditTime = (value: unknown) => {
+    if (typeof value !== 'string' || !value) return null
+    return value.slice(0, 5)
+  }
+
+  const formatEstadoCita = (value: unknown) => {
+    if (typeof value !== 'string' || !value) return 'Sin estado'
+    return ESTADO_CITA_LABELS[value] || value.replace(/_/g, ' ')
+  }
+
+  const formatEstadoAsistencia = (value: unknown) => {
+    if (typeof value !== 'string' || !value) return 'Sin registro'
+    return ESTADO_ASISTENCIA_LABELS[value] || value.replace(/_/g, ' ')
+  }
+
+  const formatAuditPrimitive = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return 'Sin dato'
+    if (typeof value === 'boolean') return value ? 'Sí' : 'No'
+    if (typeof value === 'number') return Number.isInteger(value) ? String(value) : formatCLP(value)
+    if (typeof value === 'string') return value.replace(/_/g, ' ')
+    return JSON.stringify(value)
+  }
+
+  const getAtencionSnapshots = (log: AuditLog) => {
+    const oldData = getAuditObject(log.old_data)
+    const newData = getAuditObject(log.new_data)
+    const current = Object.keys(newData).length > 0 ? newData : oldData
+    return { oldData, newData, current }
+  }
+
+  const getAtencionReference = (log: AuditLog) => {
+    const { current } = getAtencionSnapshots(log)
+    const esBloqueo = current.es_bloqueo === true
+    const pacienteNombre =
+      (typeof current.paciente_nombre === 'string' && current.paciente_nombre) ||
+      getNestedNombre(current.paciente) ||
+      (typeof current.paciente_id === 'string' && current.paciente_id
+        ? `Paciente ${current.paciente_id.slice(0, 8)}`
+        : null)
+    const profesionalNombre =
+      (typeof current.profesional_nombre === 'string' && current.profesional_nombre) ||
+      getNestedNombre(current.profesional)
+    const fecha = formatAuditDate(current.fecha)
+    const hora = formatAuditTime(current.hora)
+
+    const parts = [
+      esBloqueo
+        ? `Bloqueo${typeof current.tipo_bloqueo === 'string' ? ` (${current.tipo_bloqueo})` : ''}`
+        : pacienteNombre,
+      profesionalNombre,
+      [fecha, hora ? `a las ${hora}` : null].filter(Boolean).join(' ')
+    ].filter(Boolean)
+
+    return parts.join(' · ')
+  }
+
+  const formatAtencionAction = (log: AuditLog) => {
+    const { oldData, newData, current } = getAtencionSnapshots(log)
+    const currentEstado = newData.estado_cita ?? log.metadata?.estado_cita_nuevo ?? current.estado_cita
+    const previousEstado = oldData.estado_cita ?? log.metadata?.estado_cita_anterior
+    const currentPago = newData.pagado
+    const previousPago = oldData.pagado
+    const currentAsistencia = newData.estado_asistencia
+    const previousAsistencia = oldData.estado_asistencia
+    const changedSchedule = oldData.fecha !== newData.fecha || oldData.hora !== newData.hora
+
+    if (log.action === 'INSERT') {
+      return current.es_bloqueo === true ? 'Bloqueo creado' : 'Atención agendada'
+    }
+
+    if (log.action === 'SOFT_DELETE') {
+      return current.es_bloqueo === true ? 'Bloqueo eliminado' : 'Atención eliminada'
+    }
+
+    if (previousEstado !== currentEstado) {
+      switch (currentEstado) {
+        case 'confirmada':
+          return 'Cita confirmada'
+        case 'cancelada':
+          return 'Cita cancelada'
+        case 'reagendada':
+          return 'Cita reagendada'
+        case 'por_confirmar':
+          return 'Cita marcada por confirmar'
+        default:
+          return `Estado actualizado a ${formatEstadoCita(currentEstado)}`
+      }
+    }
+
+    if (previousPago !== currentPago) {
+      return currentPago === true ? 'Pago marcado' : 'Pago desmarcado'
+    }
+
+    if (previousAsistencia !== currentAsistencia) {
+      switch (currentAsistencia) {
+        case 'asistio':
+          return 'Asistencia confirmada'
+        case 'no_asistio':
+          return 'Ausencia registrada'
+        case 'pendiente':
+          return 'Asistencia restablecida'
+        default:
+          return 'Asistencia actualizada'
+      }
+    }
+
+    if (changedSchedule) {
+      return 'Horario reagendado'
+    }
+
+    if (oldData.profesional_id !== newData.profesional_id) {
+      return 'Profesional reasignada'
+    }
+
+    return current.es_bloqueo === true ? 'Bloqueo actualizado' : 'Atención actualizada'
+  }
+
+  const getAuditDetailItems = (log: AuditLog) => {
+    if (log.table_name === 'atenciones') {
+      const { oldData, newData } = getAtencionSnapshots(log)
+      const details: string[] = []
+
+      if (oldData.estado_cita !== newData.estado_cita && (oldData.estado_cita || newData.estado_cita)) {
+        details.push(`Estado: ${formatEstadoCita(oldData.estado_cita)} -> ${formatEstadoCita(newData.estado_cita)}`)
+      }
+
+      if (oldData.pagado !== newData.pagado && (oldData.pagado !== undefined || newData.pagado !== undefined)) {
+        details.push(`Pago: ${oldData.pagado ? 'Pagado' : 'Pendiente'} -> ${newData.pagado ? 'Pagado' : 'Pendiente'}`)
+      }
+
+      if (
+        oldData.estado_asistencia !== newData.estado_asistencia &&
+        (oldData.estado_asistencia || newData.estado_asistencia)
+      ) {
+        details.push(
+          `Asistencia: ${formatEstadoAsistencia(oldData.estado_asistencia)} -> ${formatEstadoAsistencia(newData.estado_asistencia)}`
+        )
+      }
+
+      if (oldData.fecha !== newData.fecha || oldData.hora !== newData.hora) {
+        const oldSchedule = [formatAuditDate(oldData.fecha), formatAuditTime(oldData.hora)].filter(Boolean).join(' ')
+        const newSchedule = [formatAuditDate(newData.fecha), formatAuditTime(newData.hora)].filter(Boolean).join(' ')
+        details.push(`Horario: ${oldSchedule || 'Sin dato'} -> ${newSchedule || 'Sin dato'}`)
+      }
+
+      if (oldData.valor_cobrado !== newData.valor_cobrado && (oldData.valor_cobrado !== undefined || newData.valor_cobrado !== undefined)) {
+        details.push(`Cobro: ${formatCLP(Number(oldData.valor_cobrado || 0))} -> ${formatCLP(Number(newData.valor_cobrado || 0))}`)
+      }
+
+      if (log.metadata?.source === 'sql_trigger') {
+        details.push('Origen: auditoría automática de base de datos')
+      }
+
+      return details
+    }
+
+    if (!log.metadata || Object.keys(log.metadata).length === 0) return []
+
+    return Object.entries(log.metadata).map(([key, value]) => {
+      const label = key.replace(/_/g, ' ')
+      return `${label.charAt(0).toUpperCase()}${label.slice(1)}: ${formatAuditPrimitive(value)}`
+    })
+  }
+
   const formatAuditAction = (log: AuditLog) => {
-    if (log.table_name === 'atenciones' && log.metadata?.estado_cita_nuevo) {
-      return `Cambio de estado a ${String(log.metadata.estado_cita_nuevo).replace('_', ' ')}`
+    if (log.table_name === 'atenciones') {
+      return formatAtencionAction(log)
     }
 
     switch (log.action) {
@@ -169,6 +364,14 @@ const Configuracion = () => {
       default:
         return log.action
     }
+  }
+
+  const getAuditContext = (log: AuditLog) => {
+    if (log.table_name === 'atenciones') {
+      return getAtencionReference(log)
+    }
+
+    return null
   }
 
   const formatAuditEntity = (log: AuditLog) => {
@@ -559,6 +762,9 @@ const Configuracion = () => {
                     <p className="font-medium text-gray-900">
                       {formatAuditEntity(log)}: {formatAuditAction(log)}
                     </p>
+                    {getAuditContext(log) && (
+                      <p className="text-sm text-slate-700">{getAuditContext(log)}</p>
+                    )}
                     <p className="text-sm text-gray-600">
                       {log.actor_name || log.actor_email || 'Usuario desconocido'}
                       {log.actor_role ? ` · ${log.actor_role}` : ''}
@@ -570,11 +776,23 @@ const Configuracion = () => {
                 </div>
 
                 <div className="mt-3 grid gap-2 text-sm text-gray-600 md:grid-cols-2">
-                  <p>Entidad: <span className="font-medium text-gray-800">{log.table_name}</span></p>
+                  <p>Entidad: <span className="font-medium text-gray-800">{formatAuditEntity(log)}</span></p>
                   <p>Registro: <span className="font-medium text-gray-800">{log.record_id}</span></p>
                   {log.actor_email && <p>Email: <span className="font-medium text-gray-800">{log.actor_email}</span></p>}
-                  {log.metadata && Object.keys(log.metadata).length > 0 && (
-                    <p>Detalle: <span className="font-medium text-gray-800">{JSON.stringify(log.metadata)}</span></p>
+                  {getAuditDetailItems(log).length > 0 && (
+                    <div className="md:col-span-2">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Cambios detectados</p>
+                      <div className="flex flex-wrap gap-2">
+                        {getAuditDetailItems(log).map(detail => (
+                          <span
+                            key={`${log.id}-${detail}`}
+                            className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
+                          >
+                            {detail}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
