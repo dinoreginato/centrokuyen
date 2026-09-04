@@ -8,6 +8,9 @@ import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { formatCLP } from '@/utils/currency'
 import CostoForm from './CostoForm'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 const Costos = () => {
   const { currentCentro, currentSucursal } = useSucursal()
@@ -17,6 +20,7 @@ const Costos = () => {
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'))
   const [showForm, setShowForm] = useState(false)
   const [editingCosto, setEditingCosto] = useState<Costo | undefined>()
+  const [costoToDelete, setCostoToDelete] = useState<Costo | null>(null)
 
   useEffect(() => {
     if (currentSucursal) {
@@ -50,13 +54,10 @@ const Costos = () => {
   }
 
   const deleteCosto = async (id: string) => {
-    if (!confirm('¿Está seguro de que desea eliminar este costo?')) {
-      return
-    }
-
     try {
       await costosService.delete(id)
       toast.success('Costo eliminado exitosamente')
+      setCostoToDelete(null)
       loadCostos()
     } catch (error) {
       toast.error('Error al eliminar costo')
@@ -101,11 +102,7 @@ const Costos = () => {
   const totales = calcularTotales()
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando costos del período..." />
   }
 
   return (
@@ -207,10 +204,20 @@ const Costos = () => {
         </h2>
         
         {costos.length === 0 ? (
-          <div className="text-center py-8">
-            <DollarSign className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">No hay costos registrados para este período</p>
-          </div>
+          <EmptyState
+            icon={DollarSign}
+            title="Sin movimientos en este período"
+            description="Todavía no hay costos ni aportes registrados para el mes seleccionado."
+            action={(
+              <button
+                onClick={handleNewCosto}
+                className="inline-flex items-center gap-2 rounded-lg bg-medical-blue px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Registrar movimiento</span>
+              </button>
+            )}
+          />
         ) : (
           <>
             <div className="space-y-3 md:hidden">
@@ -264,7 +271,7 @@ const Costos = () => {
                       <Edit className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => deleteCosto(costo.id)}
+                      onClick={() => setCostoToDelete(costo)}
                       className="text-red-600 hover:text-red-800 p-2"
                       aria-label={`Eliminar costo ${costo.categoria}`}
                     >
@@ -346,7 +353,7 @@ const Costos = () => {
                           <Edit className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => deleteCosto(costo.id)}
+                          onClick={() => setCostoToDelete(costo)}
                           className="text-red-600 hover:text-red-800 p-1"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -417,6 +424,21 @@ const Costos = () => {
           onCancel={handleFormCancel}
         />
       )}
+
+      <ConfirmDialog
+        open={!!costoToDelete}
+        title="Eliminar movimiento"
+        description={costoToDelete ? `Vas a eliminar "${costoToDelete.categoria}" por ${formatCLP(costoToDelete.monto)}.` : ''}
+        confirmLabel="Eliminar movimiento"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => setCostoToDelete(null)}
+        onConfirm={() => {
+          if (costoToDelete) {
+            void deleteCosto(costoToDelete.id)
+          }
+        }}
+      />
     </div>
   )
 }

@@ -11,6 +11,8 @@ import { formatCLP } from '@/utils/currency'
 import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { getBloqueoBadgeClass, getBloqueoLabel } from '@/utils/bloqueos'
 import { isActiveClinicalAtencion, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
 
 const CajaDiaria = () => {
   const { user } = useAuth()
@@ -130,11 +132,7 @@ const CajaDiaria = () => {
   }, [atencionesActivas])
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando caja diaria..." />
   }
 
   return (
@@ -267,7 +265,11 @@ const CajaDiaria = () => {
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Detalle de Atenciones del Día</h2>
         {atencionesClinicas.length === 0 ? (
-          <div className="text-center py-10 text-gray-500">No hay atenciones clínicas para la fecha seleccionada.</div>
+          <EmptyState
+            icon={Calendar}
+            title="Sin atenciones clínicas"
+            description="No hay atenciones clínicas registradas para la fecha y el profesional seleccionados."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -317,7 +319,11 @@ const CajaDiaria = () => {
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Bloques del Día</h2>
         {bloqueos.length === 0 ? (
-          <div className="text-center py-10 text-gray-500">No hay bloques no clínicos para la fecha seleccionada.</div>
+          <EmptyState
+            icon={Clock}
+            title="Sin bloques no clínicos"
+            description="No hay bloqueos ni reservas internas registradas para la fecha seleccionada."
+          />
         ) : (
           <div className="space-y-3">
             {bloqueos

@@ -22,6 +22,7 @@ import PagosPendientes from '@/components/PagosPendientes'
 import Costos from '@/components/Costos'
 import Configuracion from '@/components/Configuracion'
 import UsuariosList from '@/components/UsuariosList'
+import PageLoader from '@/components/ui/PageLoader'
 import { AppPermission, hasPermission } from '@/utils/permissions'
 import '@/utils/seedConsole' // Importar el script de datos de prueba
 import './App.css'
@@ -36,11 +37,7 @@ const PermissionRoute = ({
   const { user, loading } = useAuth()
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Validando acceso..." compact />
   }
 
   return hasPermission(user, permission) ? <>{children}</> : <Navigate to="/" replace />
@@ -103,7 +100,14 @@ function App() {
         <Router>
           <AppContent />
         </Router>
-        <Toaster position="top-right" />
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          toastOptions={{
+            duration: 3200
+          }}
+        />
       </SucursalProvider>
     </AuthProvider>
   )

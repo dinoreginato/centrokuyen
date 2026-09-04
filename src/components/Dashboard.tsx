@@ -11,6 +11,8 @@ import DashboardCharts from './DashboardCharts'
 import { autoNotificationService, notificationService } from '@/utils/notifications'
 import { formatCLP } from '@/utils/currency'
 import { hasPermission } from '@/utils/permissions'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
 
 interface DashboardStatCardProps {
   title: string
@@ -224,11 +226,7 @@ const Dashboard = () => {
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando dashboard..." />
   }
 
   const isProfesional = user?.rol === 'profesional'
@@ -353,14 +351,20 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {stats.proximasAtenciones.length > 0 && (
-        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div className="mb-5 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800">Próximas Atenciones</h2>
-              <p className="text-sm text-gray-500">Resumen de las próximas citas agendadas.</p>
-            </div>
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-800">Próximas Atenciones</h2>
+            <p className="text-sm text-gray-500">Resumen de las próximas citas agendadas.</p>
           </div>
+        </div>
+        {stats.proximasAtenciones.length === 0 ? (
+          <EmptyState
+            icon={Activity}
+            title="Sin próximas atenciones"
+            description="No hay citas futuras registradas para el período visible."
+          />
+        ) : (
           <div className="space-y-3">
             {stats.proximasAtenciones.map(atencion => (
               <div key={atencion.id} className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 md:flex-row md:items-center md:justify-between">
@@ -388,8 +392,8 @@ const Dashboard = () => {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
         <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">

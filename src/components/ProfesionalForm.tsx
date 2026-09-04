@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { profesionalesService, tiposAtencionService, profesionalComisionesService, profesionalDisponibilidadService } from '@/utils/supabase'
 import { TipoAtencion, ProfesionalComision, ProfesionalDisponibilidad } from '@/types/database'
+import PageLoader from '@/components/ui/PageLoader'
 
 type DisponibilidadFormRow = {
   dia_semana: number
@@ -277,11 +278,7 @@ const ProfesionalForm = () => {
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando profesional..." />
   }
 
   return (

@@ -9,6 +9,7 @@ import { atencionesService, profesionalesService, pacientesService, tiposAtencio
 import { addWeeks, format, parseISO } from 'date-fns'
 import { ESTADO_CITA_OPTIONS, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { hasPermission } from '@/utils/permissions'
+import PageLoader from '@/components/ui/PageLoader'
 
 type EstadoCita = NonNullable<Atencion['estado_cita']>
 type TipoBloqueo = NonNullable<Atencion['tipo_bloqueo']>
@@ -317,11 +318,7 @@ const AtencionForm = () => {
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando atención..." />
   }
 
   const generateTimeSlots = () => {

@@ -87,6 +87,19 @@ const GlobalSearch = () => {
     return () => window.removeEventListener('keydown', handleEscape)
   }, [open])
 
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const isShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k'
+      if (!isShortcut) return
+
+      event.preventDefault()
+      setOpen(true)
+    }
+
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
+  }, [])
+
   const normalizedQuery = query.trim().toLowerCase()
 
   const filteredPacientes = useMemo(() => {
@@ -140,12 +153,18 @@ const GlobalSearch = () => {
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="truncate">Buscar paciente, profesional o cita</span>
+        <span className="ml-auto hidden rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-400 sm:inline-flex">
+          Ctrl K
+        </span>
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[90] bg-slate-900/30 p-4 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-[90] bg-slate-900/30 p-4 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+        >
           <div className="mx-auto mt-10 w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center gap-3 border-b border-gray-200 px-4 py-3">
+            <div className="flex items-center gap-3 border-b border-gray-200 px-4 py-3" onClick={(e) => e.stopPropagation()}>
               <Search className="h-5 w-5 text-gray-400" />
               <input
                 value={query}
@@ -163,14 +182,14 @@ const GlobalSearch = () => {
               </button>
             </div>
 
-            <div className="max-h-[70vh] overflow-y-auto p-4">
+            <div className="max-h-[70vh] overflow-y-auto p-4" onClick={(e) => e.stopPropagation()}>
               {loading ? (
                 <PageLoader compact label="Preparando resultados..." />
               ) : !normalizedQuery ? (
                 <EmptyState
                   icon={Search}
                   title="Busca en toda la operación"
-                  description="Encuentra rápidamente pacientes, profesionales y citas dentro del centro y la sucursal activa."
+                  description="Encuentra rápidamente pacientes, profesionales y citas dentro del centro y la sucursal activa. Usa Ctrl + K para abrir este buscador en cualquier momento."
                 />
               ) : !hasResults ? (
                 <EmptyState

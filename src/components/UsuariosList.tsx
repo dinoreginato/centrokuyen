@@ -4,6 +4,9 @@ import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Centro, Usuario, Sucursal, Profesional } from '@/types/database'
 import { centrosService, usuariosService, sucursalesService, profesionalesService } from '@/utils/supabase'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 export default function UsuariosList() {
   const { currentCentro, currentSucursal } = useSucursal()
@@ -25,6 +28,7 @@ export default function UsuariosList() {
     profesional_id: ''
   })
   const [isGlobalAdmin, setIsGlobalAdmin] = useState(false)
+  const [usuarioToDelete, setUsuarioToDelete] = useState<Usuario | null>(null)
 
   useEffect(() => {
     loadData()
@@ -170,10 +174,10 @@ export default function UsuariosList() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Está seguro de eliminar este usuario?')) return
     try {
       await usuariosService.delete(id)
       toast.success('Usuario eliminado')
+      setUsuarioToDelete(null)
       loadData()
     } catch (error) {
       toast.error('Error al eliminar usuario')
@@ -188,7 +192,7 @@ export default function UsuariosList() {
     return centros.find(centro => centro.id === id)?.nombre || 'Sin centro'
   }
 
-  if (loading) return <div className="p-6">Cargando usuarios...</div>
+  if (loading) return <PageLoader label="Cargando usuarios..." />
 
   return (
     <div className="space-y-6">
@@ -372,125 +376,159 @@ export default function UsuariosList() {
         </div>
       )}
 
-      <div className="grid gap-4 md:hidden">
-        {usuarios.map(usuario => (
-          <div key={usuario.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="rounded-full bg-gray-100 p-2">
-                  <User className="h-5 w-5 text-gray-500" />
-                </div>
-                <div>
-                  <div className="font-medium text-gray-900">{usuario.nombre}</div>
-                  <div className="flex items-center gap-1 text-sm text-gray-500">
-                    <Mail className="h-3.5 w-3.5" />
-                    <span>{usuario.email}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => handleEdit(usuario)} className="p-1 text-blue-600 hover:text-blue-800" title="Editar">
-                  <Edit className="h-4 w-4" />
-                </button>
-                <button onClick={() => handleDelete(usuario.id)} className="p-1 text-red-600 hover:text-red-800" title="Eliminar">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-2 text-sm text-gray-600">
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-gray-400" />
-                <span>
-                  {usuario.rol === 'admin' && !usuario.centro_id && !usuario.sucursal_id
-                    ? 'Administrador Global'
-                    : usuario.rol.charAt(0).toUpperCase() + usuario.rol.slice(1)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-gray-400" />
-                <span>{getCentroName(usuario.centro_id)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-gray-400" />
-                <span>{getSucursalName(usuario.sucursal_id)}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="hidden overflow-hidden rounded-lg bg-white shadow-md md:block">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rol</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Centro</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sucursal</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+      {usuarios.length === 0 ? (
+        <EmptyState
+          icon={User}
+          title="No hay usuarios creados"
+          description="Crea usuarios para asignar accesos por rol, centro, sucursal y profesional."
+          action={(
+            <button
+              onClick={handleCreate}
+              className="inline-flex items-center gap-2 rounded-lg bg-medical-blue px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Crear primer usuario</span>
+            </button>
+          )}
+        />
+      ) : (
+        <>
+          <div className="grid gap-4 md:hidden">
             {usuarios.map(usuario => (
-              <tr key={usuario.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4">
-                  <div className="flex items-center">
-                    <div className="bg-gray-100 rounded-full p-2 mr-3">
+              <div key={usuario.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-full bg-gray-100 p-2">
                       <User className="h-5 w-5 text-gray-500" />
                     </div>
                     <div>
                       <div className="font-medium text-gray-900">{usuario.nombre}</div>
-                      <div className="text-sm text-gray-500">{usuario.email}</div>
+                      <div className="flex items-center gap-1 text-sm text-gray-500">
+                        <Mail className="h-3.5 w-3.5" />
+                        <span>{usuario.email}</span>
+                      </div>
                     </div>
                   </div>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    usuario.rol === 'admin' ? 'bg-purple-100 text-purple-800' :
-                    usuario.rol === 'profesional' ? 'bg-blue-100 text-blue-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {usuario.rol === 'admin' && <Shield className="w-3 h-3 mr-1" />}
-                    {usuario.rol === 'profesional' && <Stethoscope className="w-3 h-3 mr-1" />}
-                    {usuario.rol === 'admin' && !usuario.centro_id && !usuario.sucursal_id ? 'Administrador Global' : (usuario.rol.charAt(0).toUpperCase() + usuario.rol.slice(1))}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center text-sm text-gray-600">
-                    <Building2 className="mr-1 h-4 w-4 text-gray-400" />
-                    {getCentroName(usuario.centro_id)}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center text-sm text-gray-600">
-                    <MapPin className="h-4 w-4 mr-1 text-gray-400" />
-                    {getSucursalName(usuario.sucursal_id)}
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end space-x-2">
-                    <button
-                      onClick={() => handleEdit(usuario)}
-                      className="text-blue-600 hover:text-blue-800 p-1"
-                      title="Editar"
-                    >
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(usuario)} className="p-1 text-blue-600 hover:text-blue-800" title="Editar">
                       <Edit className="h-4 w-4" />
                     </button>
-                    <button
-                      onClick={() => handleDelete(usuario.id)}
-                      className="text-red-600 hover:text-red-800 p-1"
-                      title="Eliminar"
-                    >
+                    <button onClick={() => setUsuarioToDelete(usuario)} className="p-1 text-red-600 hover:text-red-800" title="Eliminar">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
-                </td>
-              </tr>
+                </div>
+
+                <div className="mt-4 space-y-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-gray-400" />
+                    <span>
+                      {usuario.rol === 'admin' && !usuario.centro_id && !usuario.sucursal_id
+                        ? 'Administrador Global'
+                        : usuario.rol.charAt(0).toUpperCase() + usuario.rol.slice(1)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-gray-400" />
+                    <span>{getCentroName(usuario.centro_id)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-gray-400" />
+                    <span>{getSucursalName(usuario.sucursal_id)}</span>
+                  </div>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+
+          <div className="hidden overflow-hidden rounded-lg bg-white shadow-md md:block">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rol</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Centro</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sucursal</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {usuarios.map(usuario => (
+                  <tr key={usuario.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center">
+                        <div className="bg-gray-100 rounded-full p-2 mr-3">
+                          <User className="h-5 w-5 text-gray-500" />
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">{usuario.nombre}</div>
+                          <div className="text-sm text-gray-500">{usuario.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        usuario.rol === 'admin' ? 'bg-purple-100 text-purple-800' :
+                        usuario.rol === 'profesional' ? 'bg-blue-100 text-blue-800' :
+                        'bg-green-100 text-green-800'
+                      }`}>
+                        {usuario.rol === 'admin' && <Shield className="w-3 h-3 mr-1" />}
+                        {usuario.rol === 'profesional' && <Stethoscope className="w-3 h-3 mr-1" />}
+                        {usuario.rol === 'admin' && !usuario.centro_id && !usuario.sucursal_id ? 'Administrador Global' : (usuario.rol.charAt(0).toUpperCase() + usuario.rol.slice(1))}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Building2 className="mr-1 h-4 w-4 text-gray-400" />
+                        {getCentroName(usuario.centro_id)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center text-sm text-gray-600">
+                        <MapPin className="h-4 w-4 mr-1 text-gray-400" />
+                        {getSucursalName(usuario.sucursal_id)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end space-x-2">
+                        <button
+                          onClick={() => handleEdit(usuario)}
+                          className="text-blue-600 hover:text-blue-800 p-1"
+                          title="Editar"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => setUsuarioToDelete(usuario)}
+                          className="text-red-600 hover:text-red-800 p-1"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <ConfirmDialog
+        open={!!usuarioToDelete}
+        title="Eliminar usuario"
+        description={usuarioToDelete ? `Vas a eliminar a ${usuarioToDelete.nombre} (${usuarioToDelete.email}).` : ''}
+        confirmLabel="Eliminar usuario"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => setUsuarioToDelete(null)}
+        onConfirm={() => {
+          if (usuarioToDelete) {
+            void handleDelete(usuarioToDelete.id)
+          }
+        }}
+      />
     </div>
   )
 }

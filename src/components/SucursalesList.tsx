@@ -4,6 +4,9 @@ import { toast } from 'sonner'
 import { Sucursal } from '@/types/database'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { sucursalesService } from '@/utils/supabase'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 export default function SucursalesList() {
   const { currentCentro } = useSucursal()
@@ -12,6 +15,7 @@ export default function SucursalesList() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState({ nombre: '', direccion: '', telefono: '' })
   const [isCreating, setIsCreating] = useState(false)
+  const [sucursalToDelete, setSucursalToDelete] = useState<Sucursal | null>(null)
 
   useEffect(() => {
     loadSucursales()
@@ -96,11 +100,10 @@ export default function SucursalesList() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Está seguro de desactivar esta sucursal?')) return
-
     try {
       await sucursalesService.delete(id)
       toast.success('Sucursal desactivada')
+      setSucursalToDelete(null)
       loadSucursales()
       setTimeout(() => window.location.reload(), 600)
     } catch (error) {
@@ -108,13 +111,15 @@ export default function SucursalesList() {
     }
   }
 
-  if (loading) return <div>Cargando sucursales...</div>
+  if (loading) return <PageLoader label="Cargando sucursales..." compact />
 
   if (!currentCentro) {
     return (
-      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
-        Seleccione un centro para administrar sus sucursales.
-      </div>
+      <EmptyState
+        icon={MapPin}
+        title="Selecciona un centro"
+        description="Primero elige un centro activo para administrar sus sucursales, teléfonos y direcciones."
+      />
     )
   }
 
@@ -175,100 +180,134 @@ export default function SucursalesList() {
         </div>
       )}
 
-      <div className="grid gap-4 md:hidden">
-        {sucursales.map(sucursal => (
-          <div key={sucursal.id} className="rounded-xl border border-gray-200 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-medium text-gray-900">{sucursal.nombre}</p>
-                <p className="mt-1 text-sm text-gray-500">{sucursal.direccion || 'Sin dirección'}</p>
-                <p className="text-sm text-gray-500">{sucursal.telefono || 'Sin teléfono'}</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => handleEdit(sucursal)} className="text-blue-600 hover:text-blue-800">
-                  <Edit className="h-5 w-5" />
-                </button>
-                <button onClick={() => handleDelete(sucursal.id)} className="text-red-600 hover:text-red-800">
-                  <Trash2 className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="hidden overflow-x-auto md:block">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Nombre</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Dirección</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Teléfono</th>
-              <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+      {sucursales.length === 0 ? (
+        <EmptyState
+          icon={MapPin}
+          title="No hay sucursales creadas"
+          description="Agrega la primera sucursal para operar sedes, agendas y disponibilidad por ubicación."
+          action={(
+            <button
+              onClick={handleCreate}
+              className="inline-flex items-center gap-2 rounded-lg bg-medical-blue px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Crear primera sucursal</span>
+            </button>
+          )}
+        />
+      ) : (
+        <>
+          <div className="grid gap-4 md:hidden">
             {sucursales.map(sucursal => (
-              <tr key={sucursal.id}>
-                <td className="px-6 py-4">
-                  {editingId === sucursal.id ? (
-                    <input
-                      className="w-full rounded border p-1"
-                      value={formData.nombre}
-                      onChange={e => setFormData({...formData, nombre: e.target.value})}
-                    />
-                  ) : (
-                    <span className="font-medium text-gray-900">{sucursal.nombre}</span>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  {editingId === sucursal.id ? (
-                    <input
-                      className="w-full rounded border p-1"
-                      value={formData.direccion}
-                      onChange={e => setFormData({...formData, direccion: e.target.value})}
-                    />
-                  ) : (
-                    <span className="text-gray-500">{sucursal.direccion}</span>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  {editingId === sucursal.id ? (
-                    <input
-                      className="w-full rounded border p-1"
-                      value={formData.telefono}
-                      onChange={e => setFormData({...formData, telefono: e.target.value})}
-                    />
-                  ) : (
-                    <span className="text-gray-500">{sucursal.telefono}</span>
-                  )}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  {editingId === sucursal.id ? (
-                    <div className="flex justify-end gap-2">
-                      <button onClick={handleSave} className="text-green-600 hover:text-green-800">
-                        <Save className="h-5 w-5" />
-                      </button>
-                      <button onClick={handleCancel} className="text-gray-600 hover:text-gray-800">
-                        <X className="h-5 w-5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex justify-end gap-2">
-                      <button onClick={() => handleEdit(sucursal)} className="text-blue-600 hover:text-blue-800">
-                        <Edit className="h-5 w-5" />
-                      </button>
-                      <button onClick={() => handleDelete(sucursal.id)} className="text-red-600 hover:text-red-800">
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
+              <div key={sucursal.id} className="rounded-xl border border-gray-200 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-gray-900">{sucursal.nombre}</p>
+                    <p className="mt-1 text-sm text-gray-500">{sucursal.direccion || 'Sin dirección'}</p>
+                    <p className="text-sm text-gray-500">{sucursal.telefono || 'Sin teléfono'}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(sucursal)} className="text-blue-600 hover:text-blue-800">
+                      <Edit className="h-5 w-5" />
+                    </button>
+                    <button onClick={() => setSucursalToDelete(sucursal)} className="text-red-600 hover:text-red-800">
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Nombre</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Dirección</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Teléfono</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                {sucursales.map(sucursal => (
+                  <tr key={sucursal.id}>
+                    <td className="px-6 py-4">
+                      {editingId === sucursal.id ? (
+                        <input
+                          className="w-full rounded border p-1"
+                          value={formData.nombre}
+                          onChange={e => setFormData({...formData, nombre: e.target.value})}
+                        />
+                      ) : (
+                        <span className="font-medium text-gray-900">{sucursal.nombre}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {editingId === sucursal.id ? (
+                        <input
+                          className="w-full rounded border p-1"
+                          value={formData.direccion}
+                          onChange={e => setFormData({...formData, direccion: e.target.value})}
+                        />
+                      ) : (
+                        <span className="text-gray-500">{sucursal.direccion}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {editingId === sucursal.id ? (
+                        <input
+                          className="w-full rounded border p-1"
+                          value={formData.telefono}
+                          onChange={e => setFormData({...formData, telefono: e.target.value})}
+                        />
+                      ) : (
+                        <span className="text-gray-500">{sucursal.telefono}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      {editingId === sucursal.id ? (
+                        <div className="flex justify-end gap-2">
+                          <button onClick={handleSave} className="text-green-600 hover:text-green-800">
+                            <Save className="h-5 w-5" />
+                          </button>
+                          <button onClick={handleCancel} className="text-gray-600 hover:text-gray-800">
+                            <X className="h-5 w-5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => handleEdit(sucursal)} className="text-blue-600 hover:text-blue-800">
+                            <Edit className="h-5 w-5" />
+                          </button>
+                          <button onClick={() => setSucursalToDelete(sucursal)} className="text-red-600 hover:text-red-800">
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <ConfirmDialog
+        open={!!sucursalToDelete}
+        title="Desactivar sucursal"
+        description={sucursalToDelete ? `Vas a desactivar la sucursal "${sucursalToDelete.nombre}".` : ''}
+        confirmLabel="Desactivar sucursal"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => setSucursalToDelete(null)}
+        onConfirm={() => {
+          if (sucursalToDelete) {
+            void handleDelete(sucursalToDelete.id)
+          }
+        }}
+      />
     </div>
   )
 }

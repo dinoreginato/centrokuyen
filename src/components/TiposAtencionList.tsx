@@ -6,6 +6,9 @@ import { TipoAtencion } from '@/types/database'
 import { tiposAtencionService } from '@/utils/supabase'
 import { formatCLP } from '@/utils/currency'
 import TipoAtencionForm from './TipoAtencionForm'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 const TiposAtencionList = () => {
   const { currentCentro, currentSucursal } = useSucursal()
@@ -13,6 +16,7 @@ const TiposAtencionList = () => {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingTipo, setEditingTipo] = useState<TipoAtencion | undefined>()
+  const [tipoToDelete, setTipoToDelete] = useState<TipoAtencion | null>(null)
 
   useEffect(() => {
     loadTipos()
@@ -32,13 +36,10 @@ const TiposAtencionList = () => {
   }
 
   const deleteTipo = async (id: string) => {
-    if (!confirm('¿Está seguro de que desea eliminar este tipo de atención?')) {
-      return
-    }
-
     try {
       await tiposAtencionService.delete(id)
       toast.success('Tipo de atención eliminado exitosamente')
+      setTipoToDelete(null)
       loadTipos()
     } catch (error) {
       toast.error('Error al eliminar tipo de atención')
@@ -68,11 +69,7 @@ const TiposAtencionList = () => {
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando tipos de atención..." />
   }
 
   return (
@@ -89,15 +86,20 @@ const TiposAtencionList = () => {
       </div>
 
       {tipos.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-md p-8 text-center">
-          <Stethoscope className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500 text-lg mb-4">No hay tipos de atención registrados</p>
-          <button
-            onClick={handleNewTipo}
-            className="bg-medical-blue hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-          >
-            Crear primer tipo de atención
-          </button>
+        <div className="bg-white rounded-lg shadow-md p-8">
+          <EmptyState
+            icon={Stethoscope}
+            title="No hay tipos de atención registrados"
+            description="Crea el primer tipo para normalizar valores base, descripciones y uso en agenda y reportes."
+            action={(
+              <button
+                onClick={handleNewTipo}
+                className="rounded-md bg-medical-blue px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Crear primer tipo de atención
+              </button>
+            )}
+          />
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -123,7 +125,7 @@ const TiposAtencionList = () => {
                     <Edit className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => deleteTipo(tipo.id)}
+                    onClick={() => setTipoToDelete(tipo)}
                     className="text-red-600 hover:text-red-800 p-1"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -167,6 +169,21 @@ const TiposAtencionList = () => {
           onCancel={handleFormCancel}
         />
       )}
+
+      <ConfirmDialog
+        open={!!tipoToDelete}
+        title="Eliminar tipo de atención"
+        description={tipoToDelete ? `Vas a eliminar "${tipoToDelete.nombre}". Las atenciones históricas seguirán registradas, pero este tipo dejará de estar disponible.` : ''}
+        confirmLabel="Eliminar tipo"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => setTipoToDelete(null)}
+        onConfirm={() => {
+          if (tipoToDelete) {
+            void deleteTipo(tipoToDelete.id)
+          }
+        }}
+      />
     </div>
   )
 }

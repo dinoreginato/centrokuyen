@@ -9,6 +9,8 @@ import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion, Profesional, ProfesionalDisponibilidad } from '@/types/database'
 import { atencionesService, profesionalDisponibilidadService, profesionalesService } from '@/utils/supabase'
 import { hasPermission } from '@/utils/permissions'
+import PageLoader from '@/components/ui/PageLoader'
+import EmptyState from '@/components/ui/EmptyState'
 
 const START_HOUR = 8
 const END_HOUR = 21
@@ -149,11 +151,7 @@ const Disponibilidad = () => {
   }, [slots, atencionesDelDia, disponibilidadDelDia])
 
   if (loadingProfesionales) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-      </div>
-    )
+    return <PageLoader label="Cargando disponibilidad..." />
   }
 
   const selectedProfesional = profesionales.find(p => p.id === selectedProfesionalId) || null
@@ -225,9 +223,13 @@ const Disponibilidad = () => {
 
       <div className="bg-white rounded-lg shadow-md p-6">
         {loadingAgenda ? (
-          <div className="flex justify-center items-center h-48">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-blue"></div>
-          </div>
+          <PageLoader compact label="Calculando bloques del día..." />
+        ) : slotRows.length === 0 ? (
+          <EmptyState
+            icon={Clock}
+            title="Sin bloques para mostrar"
+            description="No fue posible construir los bloques de horario para la fecha seleccionada."
+          />
         ) : (
           <>
             <div className="space-y-3 md:hidden">
