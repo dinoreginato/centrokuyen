@@ -232,7 +232,7 @@ const PagosPendientes = () => {
 
   const handleMarcarPagado = async (atencionId: string) => {
     try {
-      await atencionesService.update(atencionId, { pagado: true })
+      await atencionesService.setPagado(atencionId, true)
       toast.success('Pago registrado correctamente')
       loadPendientes() // Recargar para actualizar la lista
     } catch (error) {
@@ -245,7 +245,7 @@ const PagosPendientes = () => {
     try {
       const resultados = await Promise.allSettled(
         paciente.atenciones_pendientes.map(atencion =>
-        atencionesService.update(atencion.id, { pagado: true })
+        atencionesService.setPagado(atencion.id, true)
         )
       )
 

@@ -80,7 +80,7 @@ const AtencionesPorPaciente = () => {
 
     try {
       const nuevoEstado = !atencion.pagado
-      await atencionesService.update(atencion.id, { pagado: nuevoEstado })
+      await atencionesService.setPagado(atencion.id, nuevoEstado)
       toast.success(`Pago marcado como ${nuevoEstado ? 'Pagado' : 'Pendiente'}`)
       if (selectedPaciente) await loadAtenciones(selectedPaciente)
     } catch (error) {

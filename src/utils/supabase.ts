@@ -629,6 +629,16 @@ export const atencionesService = {
     return data
   },
 
+  async setPagado(id: string, pagado: boolean): Promise<Atencion> {
+    const { data, error } = await supabase.rpc('set_atencion_pagado', {
+      p_atencion_id: id,
+      p_pagado: pagado
+    })
+
+    if (error) throw error
+    return data
+  },
+
   async delete(id: string): Promise<void> {
     const { error } = await supabase
       .from('atenciones')

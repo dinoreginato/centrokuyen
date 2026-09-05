@@ -122,7 +122,7 @@ const Agenda = () => {
 
     try {
       const nuevoEstado = !atencion.pagado
-      await atencionesService.update(atencion.id, { pagado: nuevoEstado })
+      await atencionesService.setPagado(atencion.id, nuevoEstado)
       toast.success(`Pago marcado como ${nuevoEstado ? 'Pagado' : 'Pendiente'}`)
       loadData()
     } catch (error) {
