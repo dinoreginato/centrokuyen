@@ -601,13 +601,22 @@ export const atencionesService = {
       throw new Error('La atención que intentas actualizar no existe')
     }
 
-    await validateAtencionOverlap({
-      ...existing,
-      ...atencion,
-      profesional_id: atencion.profesional_id ?? existing.profesional_id,
-      fecha: atencion.fecha ?? existing.fecha,
-      hora: atencion.hora ?? existing.hora
-    }, id)
+    const shouldValidateOverlap =
+      atencion.profesional_id !== undefined ||
+      atencion.fecha !== undefined ||
+      atencion.hora !== undefined ||
+      atencion.activo !== undefined ||
+      atencion.estado_cita !== undefined
+
+    if (shouldValidateOverlap) {
+      await validateAtencionOverlap({
+        ...existing,
+        ...atencion,
+        profesional_id: atencion.profesional_id ?? existing.profesional_id,
+        fecha: atencion.fecha ?? existing.fecha,
+        hora: atencion.hora ?? existing.hora
+      }, id)
+    }
 
     const { data, error } = await supabase
       .from('atenciones')

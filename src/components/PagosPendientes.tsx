@@ -243,15 +243,28 @@ const PagosPendientes = () => {
 
   const handleMarcarTodoPagado = async (paciente: PacienteConDeuda) => {
     try {
-      // Actualizar todas las atenciones del paciente a pagado: true
-      const promesas = paciente.atenciones_pendientes.map(atencion => 
+      const resultados = await Promise.allSettled(
+        paciente.atenciones_pendientes.map(atencion =>
         atencionesService.update(atencion.id, { pagado: true })
+        )
       )
-      await Promise.all(promesas)
-      
-      toast.success(`Se registraron todos los pagos de ${paciente.nombre}`)
+
+      const exitos = resultados.filter((resultado) => resultado.status === 'fulfilled').length
+      const fallidos = resultados.length - exitos
+
       setPacienteToMarkPaid(null)
-      loadPendientes() // Recargar para actualizar la lista
+
+      if (exitos > 0) {
+        if (fallidos === 0) {
+          toast.success(`Se registraron todos los pagos de ${paciente.nombre}`)
+        } else {
+          toast.warning(`Se marcaron ${exitos} sesiones como pagadas y ${fallidos} fallaron`)
+        }
+        loadPendientes()
+        return
+      }
+
+      throw new Error('No se pudo registrar ningún pago del lote')
     } catch (error) {
       console.error('Error al registrar pagos:', error)
       toast.error('No se pudieron registrar todos los pagos')
