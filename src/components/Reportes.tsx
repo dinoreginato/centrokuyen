@@ -246,6 +246,18 @@ const Reportes = () => {
     const cambioResultado = ultimoMes && mesAnterior ? ultimoMes.resultadoFinal - mesAnterior.resultadoFinal : 0
     const cambioCobranza = ultimoMes && mesAnterior ? ultimoMes.cuentasPorCobrar - mesAnterior.cuentasPorCobrar : 0
 
+    const calcularPorcentajeCambio = (actual: number, anterior: number) => {
+      if (anterior === 0) {
+        if (actual === 0) {
+          return null
+        }
+
+        return actual > 0 ? 100 : -100
+      }
+
+      return ((actual - anterior) / Math.abs(anterior)) * 100
+    }
+
     const obtenerEstado = (valor: number, invertido = false) => {
       if (valor === 0) {
         return {
@@ -267,6 +279,8 @@ const Reportes = () => {
       ultimoMes,
       cambioResultado,
       cambioCobranza,
+      porcentajeResultado: ultimoMes && mesAnterior ? calcularPorcentajeCambio(ultimoMes.resultadoFinal, mesAnterior.resultadoFinal) : null,
+      porcentajeCobranza: ultimoMes && mesAnterior ? calcularPorcentajeCambio(ultimoMes.cuentasPorCobrar, mesAnterior.cuentasPorCobrar) : null,
       resultado: obtenerEstado(cambioResultado),
       cobranza: obtenerEstado(cambioCobranza, true)
     }
@@ -726,6 +740,11 @@ const Reportes = () => {
                         <p className={`mt-1 text-2xl font-bold ${resumenTendencia.cambioResultado >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {formatCLP(resumenTendencia.cambioResultado)}
                         </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {resumenTendencia.porcentajeResultado === null
+                            ? 'Sin base porcentual'
+                            : `${resumenTendencia.porcentajeResultado >= 0 ? '+' : ''}${resumenTendencia.porcentajeResultado.toFixed(1)}% vs mes anterior`}
+                        </p>
                       </div>
                       <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${resumenTendencia.resultado.clases}`}>
                         <resumenTendencia.resultado.icono className="h-4 w-4" />
@@ -741,6 +760,11 @@ const Reportes = () => {
                         <p className="text-sm text-amber-800">Cambio del mes seleccionado frente al anterior</p>
                         <p className={`mt-1 text-2xl font-bold ${resumenTendencia.cambioCobranza <= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {formatCLP(resumenTendencia.cambioCobranza)}
+                        </p>
+                        <p className="mt-1 text-xs text-amber-700">
+                          {resumenTendencia.porcentajeCobranza === null
+                            ? 'Sin base porcentual'
+                            : `${resumenTendencia.porcentajeCobranza >= 0 ? '+' : ''}${resumenTendencia.porcentajeCobranza.toFixed(1)}% vs mes anterior`}
                         </p>
                       </div>
                       <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${resumenTendencia.cobranza.clases}`}>
