@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { FileText, DollarSign, TrendingUp, Users, Printer, Download, SearchX } from 'lucide-react'
+import { FileText, DollarSign, TrendingUp, Users, Printer, Download, SearchX, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion, Profesional, ReporteMensual } from '@/types/database'
@@ -238,6 +238,39 @@ const Reportes = () => {
       paymentType: profesional.porcentaje_pago > 0 ? `${profesional.porcentaje_pago}%` : formatCLP(profesional.monto_fijo_pago)
     }))
   }, [atencionesPorProfesional])
+
+  const resumenTendencia = useMemo(() => {
+    const ultimoMes = acumuladoMensual[acumuladoMensual.length - 1]
+    const mesAnterior = acumuladoMensual[acumuladoMensual.length - 2]
+
+    const cambioResultado = ultimoMes && mesAnterior ? ultimoMes.resultadoFinal - mesAnterior.resultadoFinal : 0
+    const cambioCobranza = ultimoMes && mesAnterior ? ultimoMes.cuentasPorCobrar - mesAnterior.cuentasPorCobrar : 0
+
+    const obtenerEstado = (valor: number, invertido = false) => {
+      if (valor === 0) {
+        return {
+          etiqueta: 'Sin cambio',
+          icono: Minus,
+          clases: 'bg-slate-100 text-slate-700'
+        }
+      }
+
+      const esPositivo = invertido ? valor < 0 : valor > 0
+      return {
+        etiqueta: esPositivo ? 'Mejorando' : 'Empeorando',
+        icono: esPositivo ? ArrowUpRight : ArrowDownRight,
+        clases: esPositivo ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+      }
+    }
+
+    return {
+      ultimoMes,
+      cambioResultado,
+      cambioCobranza,
+      resultado: obtenerEstado(cambioResultado),
+      cobranza: obtenerEstado(cambioCobranza, true)
+    }
+  }, [acumuladoMensual])
 
   const handleExport = async (format: 'pdf' | 'excel' | 'csv' | 'json') => {
     try {
@@ -682,6 +715,63 @@ const Reportes = () => {
                   </div>
                 </div>
 
+                <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tendencia resultado</p>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm text-slate-600">
+                          {resumenTendencia.ultimoMes ? `Comparado con ${resumenTendencia.ultimoMes.label}` : 'Aun no hay comparación'}
+                        </p>
+                        <p className={`mt-1 text-2xl font-bold ${resumenTendencia.cambioResultado >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {formatCLP(resumenTendencia.cambioResultado)}
+                        </p>
+                      </div>
+                      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${resumenTendencia.resultado.clases}`}>
+                        <resumenTendencia.resultado.icono className="h-4 w-4" />
+                        {resumenTendencia.resultado.etiqueta}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Tendencia cuentas por cobrar</p>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm text-amber-800">Cambio del mes seleccionado frente al anterior</p>
+                        <p className={`mt-1 text-2xl font-bold ${resumenTendencia.cambioCobranza <= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {formatCLP(resumenTendencia.cambioCobranza)}
+                        </p>
+                      </div>
+                      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${resumenTendencia.cobranza.clases}`}>
+                        <resumenTendencia.cobranza.icono className="h-4 w-4" />
+                        {resumenTendencia.cobranza.etiqueta}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Lectura rápida</p>
+                    <div className="mt-3 space-y-2 text-sm text-blue-900">
+                      <p>
+                        Resultado acumulado:
+                        <span className={`ml-2 font-semibold ${((acumuladoMensual[acumuladoMensual.length - 1]?.acumuladoResultado) || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {((acumuladoMensual[acumuladoMensual.length - 1]?.acumuladoResultado) || 0) >= 0 ? 'positivo' : 'negativo'}
+                        </span>
+                      </p>
+                      <p>
+                        Deuda acumulada:
+                        <span className="ml-2 font-semibold text-amber-800">
+                          {((acumuladoMensual[acumuladoMensual.length - 1]?.acumuladoCobranzaPendiente) || 0) > 0 ? 'hay sesiones pendientes de cobro' : 'sin deuda pendiente'}
+                        </span>
+                      </p>
+                      <p className="text-xs text-blue-700">
+                        Esta separación evita mezclar pérdida operacional con dinero aún no cobrado.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {acumuladoMensual.length === 0 ? (
                   <EmptyState
                     icon={TrendingUp}
@@ -700,7 +790,8 @@ const Reportes = () => {
                           <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Profesionales</th>
                           <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Resultado mes</th>
                           <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Acumulado</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Por cobrar</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Por cobrar mes</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Por cobrar acumulado</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">
@@ -717,6 +808,7 @@ const Reportes = () => {
                             <td className={`px-4 py-3 text-sm font-semibold ${item.acumuladoResultado >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                               {formatCLP(item.acumuladoResultado)}
                             </td>
+                            <td className="px-4 py-3 text-sm font-medium text-amber-700">{formatCLP(item.cuentasPorCobrar)}</td>
                             <td className="px-4 py-3 text-sm font-medium text-amber-800">{formatCLP(item.acumuladoCobranzaPendiente)}</td>
                           </tr>
                         ))}
