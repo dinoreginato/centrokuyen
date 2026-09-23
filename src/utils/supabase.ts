@@ -19,6 +19,31 @@ const mapCentroToConfig = (centro: Centro): CentroConfig => ({
   updated_at: centro.updated_at
 })
 
+const createUuidLike = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `plan-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+const parseLegacySessionPlan = (observaciones?: string | null) => {
+  const match = observaciones?.match(/sesi[oó]n\s+(\d+)\s+de\s+(\d+)/i)
+  if (!match) return null
+
+  const numeroSesion = Number(match[1])
+  const totalSesiones = Number(match[2])
+
+  if (!Number.isFinite(numeroSesion) || !Number.isFinite(totalSesiones)) {
+    return null
+  }
+
+  return {
+    numeroSesion,
+    totalSesiones
+  }
+}
+
 // Helper for audit logging
 type AuditPayload = {
   action: 'INSERT' | 'UPDATE' | 'SOFT_DELETE'
@@ -578,6 +603,139 @@ export const atencionesService = {
     return data
   },
 
+  async getByPlanTratamientoId(planTratamientoId: string, sucursalId?: string, centroId?: string): Promise<Atencion[]> {
+    let query = supabase
+      .from('atenciones')
+      .select(`
+        *,
+        profesional:profesionales(*),
+        paciente:pacientes(*),
+        tipos_atencion(*)
+      `)
+      .eq('activo', true)
+      .eq('plan_tratamiento_id', planTratamientoId)
+      .order('fecha', { ascending: true })
+      .order('hora', { ascending: true })
+
+    query = applyCentroFilter(query, centroId)
+
+    if (sucursalId) {
+      query = query.eq('sucursal_id', sucursalId)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+    return data || []
+  },
+
+  async reindexPlanSessions(planTratamientoId: string, sucursalId?: string, centroId?: string): Promise<void> {
+    const atencionesPlan = await this.getByPlanTratamientoId(planTratamientoId, sucursalId, centroId)
+    if (atencionesPlan.length === 0) return
+
+    const atencionesActivas = atencionesPlan.filter((atencion) => {
+      const estadoCita = atencion.estado_cita || 'por_confirmar'
+      return !atencion.es_bloqueo && estadoCita !== 'cancelada' && estadoCita !== 'reagendada'
+    })
+
+    const totalSesionesPlan = Math.max(
+      ...atencionesPlan.map(atencion => atencion.total_sesiones || 0),
+      atencionesActivas.length
+    )
+
+    const updates = [
+      ...atencionesActivas.map((atencion, index) =>
+        supabase
+          .from('atenciones')
+          .update({
+            numero_sesion: index + 1,
+            total_sesiones: totalSesionesPlan
+          })
+          .eq('id', atencion.id)
+      ),
+      ...atencionesPlan
+        .filter((atencion) => !atencionesActivas.some(activa => activa.id === atencion.id))
+        .map((atencion) =>
+          supabase
+            .from('atenciones')
+            .update({
+              numero_sesion: null,
+              total_sesiones: totalSesionesPlan
+            })
+            .eq('id', atencion.id)
+        )
+    ]
+
+    const results = await Promise.all(updates)
+    const firstError = results.find(result => result.error)?.error
+
+    if (firstError) throw firstError
+  },
+
+  async ensureLegacyPlanMetadata(atencion: Atencion): Promise<Atencion> {
+    if (atencion.plan_tratamiento_id && atencion.total_sesiones) {
+      return atencion
+    }
+
+    if (!atencion.paciente_id) {
+      return atencion
+    }
+
+    const legacyPlan = parseLegacySessionPlan(atencion.observaciones)
+    if (!legacyPlan || legacyPlan.totalSesiones <= 1) {
+      return atencion
+    }
+
+    const relatedAtenciones = await this.getByPacienteId(
+      atencion.paciente_id,
+      atencion.sucursal_id,
+      atencion.profesional_id,
+      atencion.centro_id
+    )
+
+    const planAtenciones = relatedAtenciones
+      .filter((related) => {
+        if (related.es_bloqueo) return false
+        if (related.profesional_id !== atencion.profesional_id) return false
+        if (related.tipo_atencion !== atencion.tipo_atencion) return false
+
+        const relatedPlan = parseLegacySessionPlan(related.observaciones)
+        return relatedPlan?.totalSesiones === legacyPlan.totalSesiones
+      })
+      .sort((a, b) => {
+        const dateCompare = a.fecha.localeCompare(b.fecha)
+        return dateCompare !== 0 ? dateCompare : a.hora.localeCompare(b.hora)
+      })
+
+    if (planAtenciones.length < 2) {
+      return atencion
+    }
+
+    const planTratamientoId = createUuidLike()
+    const updates = planAtenciones.map((related, index) =>
+      supabase
+        .from('atenciones')
+        .update({
+          plan_tratamiento_id: planTratamientoId,
+          numero_sesion: index + 1,
+          total_sesiones: legacyPlan.totalSesiones
+        })
+        .eq('id', related.id)
+    )
+
+    const results = await Promise.all(updates)
+    const firstError = results.find(result => result.error)?.error
+
+    if (firstError) throw firstError
+
+    const refreshed = await this.getById(atencion.id)
+    return refreshed || {
+      ...atencion,
+      plan_tratamiento_id: planTratamientoId,
+      total_sesiones: legacyPlan.totalSesiones
+    }
+  },
+
   async updateEstadoCita(id: string, estado_cita: NonNullable<Atencion['estado_cita']>): Promise<Atencion> {
     const existing = await this.getById(id)
 
@@ -627,6 +785,19 @@ export const atencionesService = {
       .single()
     
     if (error) throw error
+
+    if (
+      existing.plan_tratamiento_id &&
+      (
+        atencion.fecha !== undefined ||
+        atencion.hora !== undefined ||
+        atencion.estado_cita !== undefined ||
+        atencion.activo !== undefined
+      )
+    ) {
+      await this.reindexPlanSessions(existing.plan_tratamiento_id, existing.sucursal_id, existing.centro_id)
+    }
+
     return data
   },
 

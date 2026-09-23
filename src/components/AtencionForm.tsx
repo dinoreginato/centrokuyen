@@ -27,6 +27,14 @@ const getBloqueoLabel = (tipo: TipoBloqueo) => {
   return BLOQUEO_OPTIONS.find(option => option.value === tipo)?.label || 'Bloqueo'
 }
 
+const createPlanId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `plan-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 type AtencionFormData = {
   profesional_id: string
   paciente_id: string
@@ -51,6 +59,7 @@ const AtencionForm = () => {
   const { user } = useAuth()
   const isEditing = !!id
   const reagendaId = !isEditing ? new URLSearchParams(location.search).get('reagenda_id') : null
+  const isReagendaFlow = !!reagendaId
   const canViewFinancialFields = hasPermission(user, 'viewFinancialFields')
   const canSelectAnyProfessional = hasPermission(user, 'selectAnyProfessional')
 
@@ -251,20 +260,28 @@ const AtencionForm = () => {
         toast.success('Atención actualizada exitosamente')
       } else {
         // Si es nueva y tiene recurrencia, crear múltiples citas semanales
-        const sesiones = formData.recurrencia || 1
+        const sesiones = isReagendaFlow ? 1 : (formData.recurrencia || 1)
         const { recurrencia, ...baseData } = dataToSave
         
-        if (sesiones > 1) {
+        const originalAtencionBase = reagendaId ? await atencionesService.getById(reagendaId) : null
+        const originalAtencion = originalAtencionBase
+          ? await atencionesService.ensureLegacyPlanMetadata(originalAtencionBase)
+          : null
+        const totalSesionesOriginal = originalAtencion?.total_sesiones || null
+        const planTratamientoId = originalAtencion?.plan_tratamiento_id || (sesiones > 1 ? createPlanId() : null)
+
+        if (sesiones > 1 && !isReagendaFlow) {
           const promesas = []
           let currentDate = parseISO(baseData.fecha)
           
           for (let i = 0; i < sesiones; i++) {
             const sesionData = {
               ...baseData,
+              plan_tratamiento_id: planTratamientoId,
+              numero_sesion: i + 1,
+              total_sesiones: sesiones,
               fecha: format(currentDate, 'yyyy-MM-dd'),
-              observaciones: sesiones > 1 
-                ? `${baseData.observaciones}\n(Sesión ${i + 1} de ${sesiones} - Plan Mensual)`
-                : baseData.observaciones
+              observaciones: baseData.observaciones
             }
             promesas.push(atencionesService.create(sesionData))
             // Avanzar a la misma hora de la próxima semana
@@ -277,9 +294,21 @@ const AtencionForm = () => {
           }
           toast.success(`Se crearon ${sesiones} sesiones semanales exitosamente`)
         } else {
-          await atencionesService.create(baseData)
+          const nuevaAtencion = await atencionesService.create({
+            ...baseData,
+            plan_tratamiento_id: planTratamientoId,
+            numero_sesion: planTratamientoId ? totalSesionesOriginal || 1 : null,
+            total_sesiones: planTratamientoId ? totalSesionesOriginal || 1 : null
+          })
           if (reagendaId) {
             await atencionesService.updateEstadoCita(reagendaId, 'reagendada')
+            if (nuevaAtencion.plan_tratamiento_id) {
+              await atencionesService.reindexPlanSessions(
+                nuevaAtencion.plan_tratamiento_id,
+                nuevaAtencion.sucursal_id,
+                nuevaAtencion.centro_id
+              )
+            }
           }
           toast.success(formData.es_bloqueo ? 'Bloque creado exitosamente' : 'Atención creada exitosamente')
         }
@@ -691,7 +720,7 @@ const AtencionForm = () => {
               </div>
             </div>
 
-            {!isEditing && (
+            {!isEditing && !isReagendaFlow && (
               <div>
                 <label htmlFor="recurrencia" className="block text-sm font-medium text-gray-700 mb-2">
                   Plan / Recurrencia
@@ -712,6 +741,12 @@ const AtencionForm = () => {
                   </select>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">Se agendarán automáticamente a la misma hora en las semanas siguientes.</p>
+              </div>
+            )}
+
+            {!isEditing && isReagendaFlow && (
+              <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 text-sm text-purple-900">
+                Si esta cita pertenece a un plan de varias sesiones, la nueva hora quedará como la última sesión pendiente del plan.
               </div>
             )}
           </div>

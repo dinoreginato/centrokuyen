@@ -218,6 +218,27 @@ Gracias 🙌🏻`
     return edad >= 0 ? edad : null
   }
 
+  const getSessionPlanLabel = (atencion: Atencion) => {
+    if (atencion.es_bloqueo) return null
+
+    if (atencion.plan_tratamiento_id) {
+      if (atencion.numero_sesion && atencion.total_sesiones) {
+        return `Sesión ${atencion.numero_sesion}/${atencion.total_sesiones}`
+      }
+
+      return null
+    }
+
+    if (atencion.numero_sesion && atencion.total_sesiones) {
+      return `Sesión ${atencion.numero_sesion}/${atencion.total_sesiones}`
+    }
+
+    const match = atencion.observaciones?.match(/sesi[oó]n\s+(\d+)\s+de\s+(\d+)/i)
+    if (!match) return null
+
+    return `Sesión ${match[1]}/${match[2]}`
+  }
+
   const atencionesFiltradas = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
 
@@ -262,6 +283,17 @@ Gracias 🙌🏻`
         <div className={`font-semibold text-gray-900 truncate ${compact ? 'text-sm' : ''}`} title={atencion.paciente?.nombre}>
           {atencion.es_bloqueo ? atencion.tipo_atencion : atencion.paciente?.nombre}
         </div>
+
+        {(() => {
+          const sessionPlanLabel = getSessionPlanLabel(atencion)
+          if (!sessionPlanLabel) return null
+
+          return (
+            <div className={`mt-1 inline-flex items-center rounded-full bg-blue-100 font-medium text-blue-800 ${compact ? 'px-2 py-0.5 text-xs' : 'px-2 py-0.5 text-[10px]'}`}>
+              {sessionPlanLabel}
+            </div>
+          )
+        })()}
 
         {(() => {
           if (atencion.es_bloqueo) return null

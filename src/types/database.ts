@@ -63,6 +63,9 @@ export interface Atencion {
   id: string
   profesional_id: string
   paciente_id: string | null
+  plan_tratamiento_id?: string | null
+  numero_sesion?: number | null
+  total_sesiones?: number | null
   fecha: string
   hora: string
   tipo_atencion: string
