@@ -7,6 +7,7 @@ import { CheckCircle2, Calendar, User, DollarSign, ChevronDown, ChevronUp, Alert
 import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { formatCLP } from '@/utils/currency'
+import { isBillableAtencion } from '@/utils/financial'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -56,14 +57,8 @@ const PagosPendientes = () => {
   }
 
   const isValidPendingPayment = (atencion: Atencion) => {
-    const estadoCita = atencion.estado_cita || 'por_confirmar'
-
-    if (atencion.es_bloqueo) return false
     if (atencion.pagado) return false
-    if (estadoCita === 'cancelada' || estadoCita === 'reagendada') return false
-    if ((atencion.valor_cobrado || 0) <= 1) return false
-
-    return true
+    return isBillableAtencion(atencion)
   }
 
   const getWhatsAppReminderLink = (paciente: PacienteConDeuda) => {

@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 export { supabase }
 import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision, AuditLog, ProfesionalDisponibilidad } from '@/types/database'
+import { getFinancialAmount, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 const applyCentroFilter = <T>(query: T, centroId?: string | null) => {
   if (!centroId) return query
@@ -888,6 +889,8 @@ export const reportesService = {
     // Obtener costos del mes
     const costos = await costosService.getByDateRange(startDate, endDate, sucursalId, centroId)
 
+    const atencionesCobrables = atenciones.filter(isBillableAtencion)
+
     // Obtener comisiones específicas (excepciones)
     const { data: comisionesData } = await supabase.from('profesional_comisiones').select('*')
     const comisiones = comisionesData || []
@@ -904,14 +907,14 @@ export const reportesService = {
       .filter(c => c.tipo === 'aporte')
       .reduce((sum, c) => sum + c.monto, 0)
 
-    const ingresosTotales = atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0)
-    const ingresosCobrados = atenciones
+    const ingresosTotales = sumFinancialAmounts(atencionesCobrables)
+    const ingresosCobrados = atencionesCobrables
       .filter(a => a.pagado)
-      .reduce((sum, a) => sum + a.valor_cobrado, 0)
+      .reduce((sum, a) => sum + getFinancialAmount(a), 0)
     const saldoPendiente = ingresosTotales - ingresosCobrados
 
     // Calcular pagos a profesionales considerando excepciones
-    const totalPagadoProfesionales = atenciones.reduce((sum, a) => {
+    const totalPagadoProfesionales = atencionesCobrables.reduce((sum, a) => {
       if (a.profesional) {
         // Buscar regla específica para este profesional y tipo de atención
         const comisionEspecifica = comisiones.find(c => 
@@ -924,7 +927,7 @@ export const reportesService = {
         const montoFijoEfectivo = comisionEspecifica?.monto_fijo ?? a.profesional.monto_fijo_pago ?? 0
 
         if (porcentajeEfectivo > 0) {
-          return sum + (a.valor_cobrado * porcentajeEfectivo / 100)
+          return sum + (getFinancialAmount(a) * porcentajeEfectivo / 100)
         } else if (montoFijoEfectivo > 0) {
           return sum + montoFijoEfectivo
         }
