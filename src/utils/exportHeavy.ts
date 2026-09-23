@@ -9,8 +9,13 @@ export const exportToPDF = {
     month: string
     year: number
     totalIncome: number
-    totalCosts: number
+    totalContributions: number
+    totalIncomeWithContributions: number
+    totalOperationalCosts: number
+    totalProfessionalCosts: number
+    totalOperation: number
     totalProfit: number
+    totalPendingReceivables: number
     professionalPayments: Array<{
       professional: string
       speciality?: string
@@ -23,6 +28,7 @@ export const exportToPDF = {
     costs: {
       fixed: number
       variable: number
+      contributions: number
     }
   }) => {
     const doc = new jsPDF()
@@ -38,16 +44,19 @@ export const exportToPDF = {
     doc.text('Resumen Financiero', 20, 65)
 
     doc.setFontSize(12)
-    doc.text(`Ingresos Totales: ${formatCLP(data.totalIncome)}`, 20, 75)
-    doc.text(`Costos Totales: ${formatCLP(data.totalCosts)}`, 20, 85)
-    doc.text(`Ganancia Neta: ${formatCLP(data.totalProfit)}`, 20, 95)
-    doc.text(`Costos Fijos: ${formatCLP(data.costs.fixed)}`, 20, 105)
-    doc.text(`Costos Variables: ${formatCLP(data.costs.variable)}`, 20, 115)
+    doc.text(`Ingresos por atenciones: ${formatCLP(data.totalIncome)}`, 20, 75)
+    doc.text(`Aportes: ${formatCLP(data.totalContributions)}`, 20, 85)
+    doc.text(`Ingresos + aportes: ${formatCLP(data.totalIncomeWithContributions)}`, 20, 95)
+    doc.text(`Costos operacionales: ${formatCLP(data.totalOperationalCosts)}`, 20, 105)
+    doc.text(`Costo profesionales: ${formatCLP(data.totalProfessionalCosts)}`, 20, 115)
+    doc.text(`Costo total operación: ${formatCLP(data.totalOperation)}`, 20, 125)
+    doc.text(`Cuentas por cobrar: ${formatCLP(data.totalPendingReceivables)}`, 20, 135)
+    doc.text(`Resultado final: ${formatCLP(data.totalProfit)}`, 20, 145)
 
     doc.setFontSize(16)
-    doc.text('Pagos a Profesionales', 20, 135)
+    doc.text('Pagos a Profesionales', 20, 165)
 
-    let yPosition = 145
+    let yPosition = 175
     data.professionalPayments.forEach((payment, index) => {
       doc.setFontSize(12)
       doc.text(`${index + 1}. ${payment.professional}`, 20, yPosition)
@@ -149,8 +158,13 @@ export const exportToExcel = {
     month: string
     year: number
     totalIncome: number
-    totalCosts: number
+    totalContributions: number
+    totalIncomeWithContributions: number
+    totalOperationalCosts: number
+    totalProfessionalCosts: number
+    totalOperation: number
     totalProfit: number
+    totalPendingReceivables: number
     professionalPayments: Array<{
       professional: string
       speciality?: string
@@ -163,9 +177,21 @@ export const exportToExcel = {
     costs: {
       fixed: number
       variable: number
+      contributions: number
     }
     appointments: Atencion[]
     costsList: Costo[]
+    accumulatedRows: Array<{
+      label: string
+      ingresos: number
+      aportes: number
+      costosOperacionales: number
+      costoProfesionales: number
+      resultadoFinal: number
+      cuentasPorCobrar: number
+      acumuladoResultado: number
+      acumuladoCobranzaPendiente: number
+    }>
   }) => {
     const wb = XLSX.utils.book_new()
 
@@ -174,13 +200,19 @@ export const exportToExcel = {
       [`Período: ${data.month} ${data.year}`, ''],
       ['', ''],
       ['RESUMEN FINANCIERO', ''],
-      ['Ingresos Totales', formatCLP(data.totalIncome)],
-      ['Costos Totales', formatCLP(data.totalCosts)],
-      ['Ganancia Neta', formatCLP(data.totalProfit)],
+      ['Ingresos por atenciones', formatCLP(data.totalIncome)],
+      ['Aportes', formatCLP(data.totalContributions)],
+      ['Ingresos + aportes', formatCLP(data.totalIncomeWithContributions)],
+      ['Costos operacionales', formatCLP(data.totalOperationalCosts)],
+      ['Costo profesionales', formatCLP(data.totalProfessionalCosts)],
+      ['Costo total operación', formatCLP(data.totalOperation)],
+      ['Cuentas por cobrar', formatCLP(data.totalPendingReceivables)],
+      ['Resultado final', formatCLP(data.totalProfit)],
       ['', ''],
       ['DETALLE DE COSTOS', ''],
       ['Costos Fijos', formatCLP(data.costs.fixed)],
       ['Costos Variables', formatCLP(data.costs.variable)],
+      ['Aportes', formatCLP(data.costs.contributions)],
       ['', ''],
       ['PAGOS A PROFESIONALES', ''],
       ...data.professionalPayments.map(p => [
@@ -238,6 +270,24 @@ export const exportToExcel = {
 
     const paymentsWs = XLSX.utils.aoa_to_sheet(paymentsData)
     XLSX.utils.book_append_sheet(wb, paymentsWs, 'Pagos Profesionales')
+
+    const accumulatedData = [
+      ['MES', 'INGRESOS', 'APORTES', 'COSTOS OPERACIONALES', 'COSTO PROFESIONALES', 'RESULTADO MES', 'POR COBRAR MES', 'ACUMULADO RESULTADO', 'ACUMULADO POR COBRAR'],
+      ...data.accumulatedRows.map(row => [
+        row.label,
+        row.ingresos,
+        row.aportes,
+        row.costosOperacionales,
+        row.costoProfesionales,
+        row.resultadoFinal,
+        row.cuentasPorCobrar,
+        row.acumuladoResultado,
+        row.acumuladoCobranzaPendiente
+      ])
+    ]
+
+    const accumulatedWs = XLSX.utils.aoa_to_sheet(accumulatedData)
+    XLSX.utils.book_append_sheet(wb, accumulatedWs, 'Acumulado')
 
     XLSX.writeFile(wb, `reporte_mensual_${data.month}_${data.year}.xlsx`)
   },

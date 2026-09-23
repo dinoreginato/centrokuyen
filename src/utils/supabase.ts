@@ -900,10 +900,15 @@ export const reportesService = {
       .filter(c => c.tipo === 'variable')
       .reduce((sum, c) => sum + c.monto, 0)
 
+    const totalAportes = costos
+      .filter(c => c.tipo === 'aporte')
+      .reduce((sum, c) => sum + c.monto, 0)
+
     const ingresosTotales = atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0)
     const ingresosCobrados = atenciones
       .filter(a => a.pagado)
       .reduce((sum, a) => sum + a.valor_cobrado, 0)
+    const saldoPendiente = ingresosTotales - ingresosCobrados
 
     // Calcular pagos a profesionales considerando excepciones
     const totalPagadoProfesionales = atenciones.reduce((sum, a) => {
@@ -927,7 +932,9 @@ export const reportesService = {
       return sum
     }, 0)
 
-    const utilidadNeta = ingresosTotales - totalPagadoProfesionales - costosFijos - costosVariables
+    const costosOperacionales = costosFijos + costosVariables
+    const totalOperacion = costosOperacionales + totalPagadoProfesionales
+    const resultadoFinal = ingresosTotales + totalAportes - totalOperacion
 
     return {
       mes: startDate,
@@ -935,10 +942,15 @@ export const reportesService = {
       ingresos_totales: ingresosTotales,
       ingresos_cobrados: ingresosCobrados,
       total_pagado_profesionales: totalPagadoProfesionales,
+      total_aportes: totalAportes,
+      utilidad_neta: resultadoFinal,
+      resultado_final: resultadoFinal,
       costos_fijos: costosFijos,
       costos_variables: costosVariables,
-      total_costos: costosFijos + costosVariables,
-      utilidad_neta: utilidadNeta
+      costos_operacionales: costosOperacionales,
+      total_costos: costosOperacionales,
+      total_operacion: totalOperacion,
+      saldo_pendiente: saldoPendiente
     }
   }
 }

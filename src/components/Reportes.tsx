@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { FileText, DollarSign, TrendingUp, Users, Printer, Download, SearchX } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
-import { Atencion, Profesional } from '@/types/database'
+import { Atencion, Profesional, ReporteMensual } from '@/types/database'
 import { atencionesService, profesionalesService, reportesService, costosService, profesionalComisionesService } from '@/utils/supabase'
 import { format as dateFormat, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -11,15 +11,29 @@ import { formatCLP } from '@/utils/currency'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 
+interface AcumuladoMensual {
+  month: number
+  label: string
+  ingresos: number
+  aportes: number
+  costosOperacionales: number
+  costoProfesionales: number
+  resultadoFinal: number
+  cuentasPorCobrar: number
+  acumuladoResultado: number
+  acumuladoCobranzaPendiente: number
+}
+
 const Reportes = () => {
   const { currentCentro, currentSucursal } = useSucursal()
   const [selectedMonth, setSelectedMonth] = useState(dateFormat(new Date(), 'yyyy-MM'))
   const [selectedProfesional, setSelectedProfesional] = useState<string>('todos')
-  const [reporteData, setReporteData] = useState<any>(null)
+  const [reporteData, setReporteData] = useState<ReporteMensual | null>(null)
   const [atenciones, setAtenciones] = useState<Atencion[]>([])
   const [profesionales, setProfesionales] = useState<Profesional[]>([])
   const [comisiones, setComisiones] = useState<any[]>([])
   const [costos, setCostos] = useState<any[]>([])
+  const [acumuladoMensual, setAcumuladoMensual] = useState<AcumuladoMensual[]>([])
   const [loading, setLoading] = useState(true)
   const [exportingFormat, setExportingFormat] = useState<'pdf' | 'excel' | 'csv' | 'json' | null>(null)
 
@@ -54,16 +68,45 @@ const Reportes = () => {
       const comisionesResults = await Promise.all(comisionesPromises)
       const allComisiones = comisionesResults.flat()
 
+      const reportesAcumulados = selectedProfesional === 'todos'
+        ? await Promise.all(
+            Array.from({ length: month }, (_, index) =>
+              reportesService.getReporteMensual(year, index + 1, currentSucursal?.id, currentCentro?.id)
+            )
+          )
+        : []
+
       // Filtrar por profesional si se seleccionó uno específico
       if (selectedProfesional !== 'todos') {
         atencionesMes = atencionesMes.filter(a => a.profesional_id === selectedProfesional)
       }
+
+      let acumuladoResultado = 0
+      let acumuladoCobranzaPendiente = 0
+      const serieAcumulada = reportesAcumulados.map((item, index) => {
+        acumuladoResultado += item.resultado_final
+        acumuladoCobranzaPendiente += item.saldo_pendiente
+
+        return {
+          month: index + 1,
+          label: dateFormat(new Date(year, index, 1), 'MMM yyyy', { locale: es }),
+          ingresos: item.ingresos_totales,
+          aportes: item.total_aportes,
+          costosOperacionales: item.costos_operacionales,
+          costoProfesionales: item.total_pagado_profesionales,
+          resultadoFinal: item.resultado_final,
+          cuentasPorCobrar: item.saldo_pendiente,
+          acumuladoResultado,
+          acumuladoCobranzaPendiente
+        }
+      })
       
       setReporteData(reporte)
       setAtenciones(atencionesMes)
       setProfesionales(profesionalesData)
       setComisiones(allComisiones)
       setCostos(costosData)
+      setAcumuladoMensual(serieAcumulada)
     } catch (error: any) {
       const msg = error?.message || 'Error desconocido'
       toast.error(`Error al cargar datos del reporte: ${msg}`)
@@ -143,6 +186,47 @@ const Reportes = () => {
       .sort((a, b) => b.total - a.total)
   }, [atenciones])
 
+  const costosOperacionalesMes = useMemo(
+    () => costos.filter(c => c.tipo === 'fijo' || c.tipo === 'variable').reduce((sum, c) => sum + c.monto, 0),
+    [costos]
+  )
+
+  const totalAportesMes = useMemo(
+    () => costos.filter(c => c.tipo === 'aporte').reduce((sum, c) => sum + c.monto, 0),
+    [costos]
+  )
+
+  const costosFijosMes = useMemo(
+    () => costos.filter(c => c.tipo === 'fijo').reduce((sum, c) => sum + c.monto, 0),
+    [costos]
+  )
+
+  const costosVariablesMes = useMemo(
+    () => costos.filter(c => c.tipo === 'variable').reduce((sum, c) => sum + c.monto, 0),
+    [costos]
+  )
+
+  const resumenFinancieroGeneral = useMemo(() => {
+    const ingresosAtenciones = reporteData?.ingresos_totales || 0
+    const aportes = reporteData?.total_aportes ?? totalAportesMes
+    const costosOperacionales = reporteData?.costos_operacionales ?? costosOperacionalesMes
+    const costoProfesionales = reporteData?.total_pagado_profesionales || 0
+    const totalOperacion = reporteData?.total_operacion ?? (costosOperacionales + costoProfesionales)
+    const resultadoFinal = reporteData?.resultado_final ?? (ingresosAtenciones + aportes - totalOperacion)
+    const cuentasPorCobrar = reporteData?.saldo_pendiente ?? Math.max(ingresosAtenciones - (reporteData?.ingresos_cobrados || 0), 0)
+
+    return {
+      ingresosAtenciones,
+      aportes,
+      ingresosConAportes: ingresosAtenciones + aportes,
+      costosOperacionales,
+      costoProfesionales,
+      totalOperacion,
+      resultadoFinal,
+      cuentasPorCobrar
+    }
+  }, [costosOperacionalesMes, reporteData, totalAportesMes])
+
   const professionalPayments = useMemo(() => {
     return atencionesPorProfesional.map(({ profesional, atenciones, total, pagosPendientes }) => ({
       professional: profesional.nombre,
@@ -218,8 +302,9 @@ const Reportes = () => {
         const monthName = dateFormat(new Date(year, month - 1), 'MMMM', { locale: es })
         
         const costs = {
-          fixed: costos.filter(c => c.tipo === 'fijo').reduce((sum, c) => sum + c.monto, 0),
-          variable: costos.filter(c => c.tipo === 'variable').reduce((sum, c) => sum + c.monto, 0)
+          fixed: costosFijosMes,
+          variable: costosVariablesMes,
+          contributions: totalAportesMes
         }
         
         if (format === 'pdf') {
@@ -228,9 +313,14 @@ const Reportes = () => {
             centerName: currentCentro?.nombre,
             month: monthName,
             year: year,
-            totalIncome: reporteData.ingresos_totales,
-            totalCosts: reporteData.total_costos,
-            totalProfit: reporteData.utilidad_neta,
+            totalIncome: resumenFinancieroGeneral.ingresosAtenciones,
+            totalContributions: resumenFinancieroGeneral.aportes,
+            totalIncomeWithContributions: resumenFinancieroGeneral.ingresosConAportes,
+            totalOperationalCosts: resumenFinancieroGeneral.costosOperacionales,
+            totalProfessionalCosts: resumenFinancieroGeneral.costoProfesionales,
+            totalOperation: resumenFinancieroGeneral.totalOperacion,
+            totalProfit: resumenFinancieroGeneral.resultadoFinal,
+            totalPendingReceivables: resumenFinancieroGeneral.cuentasPorCobrar,
             professionalPayments,
             costs
           })
@@ -240,13 +330,19 @@ const Reportes = () => {
             centerName: currentCentro?.nombre,
             month: monthName,
             year: year,
-            totalIncome: reporteData.ingresos_totales,
-            totalCosts: reporteData.total_costos,
-            totalProfit: reporteData.utilidad_neta,
+            totalIncome: resumenFinancieroGeneral.ingresosAtenciones,
+            totalContributions: resumenFinancieroGeneral.aportes,
+            totalIncomeWithContributions: resumenFinancieroGeneral.ingresosConAportes,
+            totalOperationalCosts: resumenFinancieroGeneral.costosOperacionales,
+            totalProfessionalCosts: resumenFinancieroGeneral.costoProfesionales,
+            totalOperation: resumenFinancieroGeneral.totalOperacion,
+            totalProfit: resumenFinancieroGeneral.resultadoFinal,
+            totalPendingReceivables: resumenFinancieroGeneral.cuentasPorCobrar,
             professionalPayments,
             costs,
             appointments: atenciones,
-            costsList: costos
+            costsList: costos,
+            accumulatedRows: acumuladoMensual
           })
         } else if (format === 'csv') {
           exportUtils.toCSV(
@@ -269,6 +365,8 @@ const Reportes = () => {
               mes: monthName,
               anio: year,
               resumen: reporteData,
+              resumen_financiero: resumenFinancieroGeneral,
+              acumulado_mensual: acumuladoMensual,
               pagos_profesionales: professionalPayments,
               costos,
               atenciones
@@ -369,126 +467,321 @@ const Reportes = () => {
               </div>
             </div>
           )}
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Atenciones</p>
-                  <p className="text-3xl font-bold text-medical-blue">{selectedProfesional === 'todos' ? reporteData.total_atenciones : atenciones.length}</p>
-                </div>
-                <div className="bg-medical-blue text-white rounded-full p-3">
-                  <FileText className="h-6 w-6" />
-                </div>
-              </div>
-            </div>
 
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Ingresos Totales</p>
-                  <p className="text-3xl font-bold text-green-600">
-                    {formatCLP(selectedProfesional === 'todos' ? reporteData.ingresos_totales : atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0))}
-                  </p>
-                </div>
-                <div className="bg-green-600 text-white rounded-full p-3">
-                  <DollarSign className="h-6 w-6" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Pagos a Profesionales</p>
-                  <p className="text-3xl font-bold text-orange-600">
-                    {formatCLP(selectedProfesional === 'todos' ? reporteData.total_pagado_profesionales : atenciones.reduce((sum, a) => sum + calcularPagoProfesional(a), 0))}
-                  </p>
-                </div>
-                <div className="bg-orange-600 text-white rounded-full p-3">
-                  <Users className="h-6 w-6" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Utilidad Neta</p>
-                  <p className="text-xs text-gray-400 mb-1">
-                    {selectedProfesional === 'todos' ? '(Ingresos - Pagos - Costos)' : '(Ingresos - Pago Profesional)'}
-                  </p>
-                  <p className="text-3xl font-bold text-purple-600">
-                    {formatCLP(selectedProfesional === 'todos' ? reporteData.utilidad_neta : 
-                      (atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0) - atenciones.reduce((sum, a) => sum + calcularPagoProfesional(a), 0))
-                    )}
-                  </p>
-                </div>
-                <div className="bg-purple-600 text-white rounded-full p-3">
-                  <TrendingUp className="h-6 w-6" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Nueva Sección: Desglose de Costos y Actividad (Solo visible en vista general) */}
-          {selectedProfesional === 'todos' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 mb-6">
-              {/* Costos Operativos */}
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                  <DollarSign className="h-5 w-5 mr-2 text-red-500" />
-                  Costos Operativos del Mes
-                </h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+          {selectedProfesional === 'todos' ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-gray-700">Costos Fijos</p>
-                      <p className="text-xs text-gray-500">Alquiler, Servicios, Sueldos fijos</p>
+                      <p className="text-sm font-medium text-gray-600">Ingresos por atenciones</p>
+                      <p className="text-3xl font-bold text-green-600">{formatCLP(resumenFinancieroGeneral.ingresosAtenciones)}</p>
                     </div>
-                    <span className="text-lg font-bold text-red-600">
-                      {formatCLP(costos.filter(c => c.tipo === 'fijo').reduce((sum, c) => sum + c.monto, 0))}
-                    </span>
+                    <div className="rounded-full bg-green-600 p-3 text-white">
+                      <DollarSign className="h-6 w-6" />
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
+                </div>
+
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-gray-700">Costos Variables</p>
-                      <p className="text-xs text-gray-500">Insumos, Mantenimiento, Extras</p>
+                      <p className="text-sm font-medium text-gray-600">Aportes</p>
+                      <p className="text-3xl font-bold text-cyan-600">{formatCLP(resumenFinancieroGeneral.aportes)}</p>
                     </div>
-                    <span className="text-lg font-bold text-orange-600">
-                      {formatCLP(costos.filter(c => c.tipo === 'variable').reduce((sum, c) => sum + c.monto, 0))}
-                    </span>
+                    <div className="rounded-full bg-cyan-600 p-3 text-white">
+                      <TrendingUp className="h-6 w-6" />
+                    </div>
                   </div>
-                  <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
-                    <span className="font-bold text-gray-800">Total Costos Operativos</span>
-                    <span className="font-bold text-xl text-gray-900">
-                      {formatCLP(reporteData.total_costos || 0)}
-                    </span>
+                </div>
+
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Ingresos + aportes</p>
+                      <p className="text-3xl font-bold text-blue-600">{formatCLP(resumenFinancieroGeneral.ingresosConAportes)}</p>
+                    </div>
+                    <div className="rounded-full bg-blue-600 p-3 text-white">
+                      <FileText className="h-6 w-6" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Costos operacionales</p>
+                      <p className="text-3xl font-bold text-red-600">{formatCLP(resumenFinancieroGeneral.costosOperacionales)}</p>
+                    </div>
+                    <div className="rounded-full bg-red-600 p-3 text-white">
+                      <DollarSign className="h-6 w-6" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Costo de profesionales</p>
+                      <p className="text-3xl font-bold text-orange-600">{formatCLP(resumenFinancieroGeneral.costoProfesionales)}</p>
+                    </div>
+                    <div className="rounded-full bg-orange-600 p-3 text-white">
+                      <Users className="h-6 w-6" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Resultado final</p>
+                      <p className={`text-3xl font-bold ${resumenFinancieroGeneral.resultadoFinal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {formatCLP(resumenFinancieroGeneral.resultadoFinal)}
+                      </p>
+                    </div>
+                    <div className={`rounded-full p-3 text-white ${resumenFinancieroGeneral.resultadoFinal >= 0 ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+                      <TrendingUp className="h-6 w-6" />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Resumen por Tipo de Actividad */}
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                  <FileText className="h-5 w-5 mr-2 text-blue-500" />
-                  Resumen por Tipo de Actividad
-                </h3>
-                <div className="space-y-3 overflow-y-auto max-h-64">
-                  {resumenPorTipoAtencion.map((item, index) => (
-                    <div key={index} className="flex justify-between items-center p-2 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0">
-                      <div className="flex items-center">
-                        <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-full mr-3">
-                          {item.cantidad}
-                        </span>
-                        <span className="text-gray-700 font-medium">{item.tipo}</span>
+              <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+                <div className="rounded-lg bg-white p-6 shadow-md xl:col-span-2">
+                  <h3 className="mb-4 text-lg font-semibold text-gray-800">Resumen del período</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
+                      <div>
+                        <p className="font-medium text-gray-700">Ingresos por atenciones</p>
+                        <p className="text-xs text-gray-500">Total facturado en el mes</p>
                       </div>
-                      <span className="font-bold text-gray-900">{formatCLP(item.total)}</span>
+                      <span className="font-semibold text-slate-900">{formatCLP(resumenFinancieroGeneral.ingresosAtenciones)}</span>
                     </div>
-                  ))}
-                  {resumenPorTipoAtencion.length === 0 && (
-                    <p className="text-center text-gray-500 py-4">No hay actividades registradas</p>
-                  )}
+                    <div className="flex items-center justify-between rounded-lg bg-cyan-50 px-4 py-3">
+                      <div>
+                        <p className="font-medium text-gray-700">Aportes</p>
+                        <p className="text-xs text-gray-500">Ingresos adicionales registrados en costos como aporte</p>
+                      </div>
+                      <span className="font-semibold text-cyan-700">+ {formatCLP(resumenFinancieroGeneral.aportes)}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg bg-red-50 px-4 py-3">
+                      <div>
+                        <p className="font-medium text-gray-700">Costos operacionales</p>
+                        <p className="text-xs text-gray-500">Arriendo, luz, agua, insumos y otros costos del mes</p>
+                      </div>
+                      <span className="font-semibold text-red-700">- {formatCLP(resumenFinancieroGeneral.costosOperacionales)}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg bg-orange-50 px-4 py-3">
+                      <div>
+                        <p className="font-medium text-gray-700">Costo de profesionales</p>
+                        <p className="text-xs text-gray-500">Monto a pagar por sesiones realizadas</p>
+                      </div>
+                      <span className="font-semibold text-orange-700">- {formatCLP(resumenFinancieroGeneral.costoProfesionales)}</span>
+                    </div>
+                    <div className="grid gap-3 border-t border-gray-200 pt-4 md:grid-cols-2">
+                      <div className="rounded-lg bg-blue-50 px-4 py-3">
+                        <p className="text-sm font-medium text-blue-800">Costo total de operación</p>
+                        <p className="mt-1 text-2xl font-bold text-blue-900">{formatCLP(resumenFinancieroGeneral.totalOperacion)}</p>
+                      </div>
+                      <div className="rounded-lg bg-slate-900 px-4 py-3 text-white">
+                        <p className="text-sm font-medium text-slate-200">Resultado final del mes</p>
+                        <p className="mt-1 text-2xl font-bold">{formatCLP(resumenFinancieroGeneral.resultadoFinal)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <h3 className="mb-4 text-lg font-semibold text-gray-800">Control de cobranza</h3>
+                  <div className="space-y-4">
+                    <div className="rounded-lg bg-amber-50 px-4 py-3">
+                      <p className="text-sm font-medium text-amber-800">Cuentas por cobrar del mes</p>
+                      <p className="mt-1 text-2xl font-bold text-amber-900">{formatCLP(resumenFinancieroGeneral.cuentasPorCobrar)}</p>
+                      <p className="mt-1 text-xs text-amber-700">Corresponde a sesiones registradas pero todavía no marcadas como pagadas.</p>
+                    </div>
+                    <div className="rounded-lg bg-slate-50 px-4 py-3">
+                      <p className="text-sm font-medium text-slate-700">Total atenciones</p>
+                      <p className="mt-1 text-2xl font-bold text-slate-900">{reporteData.total_atenciones}</p>
+                    </div>
+                    <div className="rounded-lg bg-emerald-50 px-4 py-3">
+                      <p className="text-sm font-medium text-emerald-800">Ingresos cobrados</p>
+                      <p className="mt-1 text-2xl font-bold text-emerald-900">{formatCLP(reporteData.ingresos_cobrados)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <h3 className="mb-4 text-lg font-semibold text-gray-800">Desglose de costos operacionales</h3>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center rounded-lg bg-red-50 p-3">
+                      <div>
+                        <p className="font-medium text-gray-700">Costos fijos</p>
+                        <p className="text-xs text-gray-500">Arriendo, servicios base y otros costos regulares</p>
+                      </div>
+                      <span className="text-lg font-bold text-red-600">{formatCLP(costosFijosMes)}</span>
+                    </div>
+                    <div className="flex justify-between items-center rounded-lg bg-orange-50 p-3">
+                      <div>
+                        <p className="font-medium text-gray-700">Costos variables</p>
+                        <p className="text-xs text-gray-500">Insumos, mantenciones, compras y extras</p>
+                      </div>
+                      <span className="text-lg font-bold text-orange-600">{formatCLP(costosVariablesMes)}</span>
+                    </div>
+                    <div className="flex justify-between items-center rounded-lg bg-cyan-50 p-3">
+                      <div>
+                        <p className="font-medium text-gray-700">Aportes registrados</p>
+                        <p className="text-xs text-gray-500">Se muestran separados porque son ingresos adicionales</p>
+                      </div>
+                      <span className="text-lg font-bold text-cyan-700">{formatCLP(totalAportesMes)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <h3 className="mb-4 text-lg font-semibold text-gray-800">Resumen por tipo de actividad</h3>
+                  <div className="space-y-3 overflow-y-auto max-h-64">
+                    {resumenPorTipoAtencion.map((item, index) => (
+                      <div key={index} className="flex justify-between items-center p-2 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0">
+                        <div className="flex items-center">
+                          <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-full mr-3">
+                            {item.cantidad}
+                          </span>
+                          <span className="text-gray-700 font-medium">{item.tipo}</span>
+                        </div>
+                        <span className="font-bold text-gray-900">{formatCLP(item.total)}</span>
+                      </div>
+                    ))}
+                    {resumenPorTipoAtencion.length === 0 && (
+                      <p className="text-center text-gray-500 py-4">No hay actividades registradas</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-lg bg-white p-6 shadow-md">
+                <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800">Acumulado del año</h3>
+                    <p className="text-sm text-gray-500">Suma mes a mes del resultado final y de las cuentas por cobrar para detectar si el negocio mejora o si la deuda va creciendo.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg bg-slate-50 px-4 py-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Acumulado resultado</p>
+                      <p className={`mt-1 text-xl font-bold ${((acumuladoMensual[acumuladoMensual.length - 1]?.acumuladoResultado) || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {formatCLP(acumuladoMensual[acumuladoMensual.length - 1]?.acumuladoResultado || 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-amber-50 px-4 py-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Acumulado por cobrar</p>
+                      <p className="mt-1 text-xl font-bold text-amber-900">
+                        {formatCLP(acumuladoMensual[acumuladoMensual.length - 1]?.acumuladoCobranzaPendiente || 0)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {acumuladoMensual.length === 0 ? (
+                  <EmptyState
+                    icon={TrendingUp}
+                    title="Sin acumulado disponible"
+                    description="Selecciona un período general para revisar el avance financiero del año."
+                  />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Mes</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Ingresos</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Aportes</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Costos operacionales</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Profesionales</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Resultado mes</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Acumulado</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Por cobrar</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {acumuladoMensual.map((item) => (
+                          <tr key={item.month}>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.label}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{formatCLP(item.ingresos)}</td>
+                            <td className="px-4 py-3 text-sm text-cyan-700">{formatCLP(item.aportes)}</td>
+                            <td className="px-4 py-3 text-sm text-red-700">{formatCLP(item.costosOperacionales)}</td>
+                            <td className="px-4 py-3 text-sm text-orange-700">{formatCLP(item.costoProfesionales)}</td>
+                            <td className={`px-4 py-3 text-sm font-semibold ${item.resultadoFinal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              {formatCLP(item.resultadoFinal)}
+                            </td>
+                            <td className={`px-4 py-3 text-sm font-semibold ${item.acumuladoResultado >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                              {formatCLP(item.acumuladoResultado)}
+                            </td>
+                            <td className="px-4 py-3 text-sm font-medium text-amber-800">{formatCLP(item.acumuladoCobranzaPendiente)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+              <div className="bg-white p-6 rounded-lg shadow-md">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Total atenciones</p>
+                    <p className="text-3xl font-bold text-medical-blue">{atenciones.length}</p>
+                  </div>
+                  <div className="bg-medical-blue text-white rounded-full p-3">
+                    <FileText className="h-6 w-6" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow-md">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Ingresos generados</p>
+                    <p className="text-3xl font-bold text-green-600">
+                      {formatCLP(atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0))}
+                    </p>
+                  </div>
+                  <div className="bg-green-600 text-white rounded-full p-3">
+                    <DollarSign className="h-6 w-6" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow-md">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Costo profesional</p>
+                    <p className="text-3xl font-bold text-orange-600">
+                      {formatCLP(atenciones.reduce((sum, a) => sum + calcularPagoProfesional(a), 0))}
+                    </p>
+                  </div>
+                  <div className="bg-orange-600 text-white rounded-full p-3">
+                    <Users className="h-6 w-6" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow-md">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Resultado profesional</p>
+                    <p className="text-3xl font-bold text-purple-600">
+                      {formatCLP(
+                        atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0) -
+                          atenciones.reduce((sum, a) => sum + calcularPagoProfesional(a), 0)
+                      )}
+                    </p>
+                  </div>
+                  <div className="bg-purple-600 text-white rounded-full p-3">
+                    <TrendingUp className="h-6 w-6" />
+                  </div>
                 </div>
               </div>
             </div>

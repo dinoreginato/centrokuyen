@@ -180,10 +180,15 @@ export interface ReporteMensual {
   ingresos_totales: number
   ingresos_cobrados: number
   total_pagado_profesionales: number
+  total_aportes: number
   utilidad_neta: number
+  resultado_final: number
   costos_fijos: number
   costos_variables: number
+  costos_operacionales: number
   total_costos: number
+  total_operacion: number
+  saldo_pendiente: number
 }
 
 export interface ProfesionalComision {
