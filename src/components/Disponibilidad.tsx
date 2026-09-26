@@ -8,12 +8,11 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Atencion, Profesional, ProfesionalDisponibilidad } from '@/types/database'
 import { atencionesService, profesionalDisponibilidadService, profesionalesService } from '@/utils/supabase'
+import { BLOQUEO_LAST_SLOT_HOUR, BLOQUEO_START_HOUR, getBloqueoBadgeClass, getBloqueoLabel } from '@/utils/bloqueos'
 import { hasPermission } from '@/utils/permissions'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 
-const START_HOUR = 8
-const END_HOUR = 21
 const SESSION_MINUTES = 60
 
 const timeToMinutes = (time: string) => {
@@ -29,10 +28,8 @@ const Disponibilidad = () => {
 
   const [profesionales, setProfesionales] = useState<Profesional[]>([])
   const [loadingProfesionales, setLoadingProfesionales] = useState(true)
-
   const [selectedProfesionalId, setSelectedProfesionalId] = useState('')
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
-
   const [atenciones, setAtenciones] = useState<Atencion[]>([])
   const [disponibilidad, setDisponibilidad] = useState<ProfesionalDisponibilidad[]>([])
   const [loadingAgenda, setLoadingAgenda] = useState(false)
@@ -44,8 +41,7 @@ const Disponibilidad = () => {
   }, [currentCentro, currentSucursal])
 
   useEffect(() => {
-    if (!selectedProfesionalId || !selectedDate) return
-    if (!currentSucursal) return
+    if (!selectedProfesionalId || !selectedDate || !currentSucursal) return
     loadAgendaData()
   }, [selectedProfesionalId, selectedDate, currentCentro, currentSucursal])
 
@@ -103,25 +99,46 @@ const Disponibilidad = () => {
 
   const slots = useMemo(() => {
     const result: string[] = []
-    for (let h = START_HOUR; h <= END_HOUR; h++) {
-      result.push(`${h.toString().padStart(2, '0')}:00`)
+    for (let hour = BLOQUEO_START_HOUR; hour <= BLOQUEO_LAST_SLOT_HOUR; hour++) {
+      result.push(`${hour.toString().padStart(2, '0')}:00`)
     }
     return result
   }, [])
 
-  const atencionesDelDia = useMemo(() => {
-    return atenciones.filter(a => a.fecha === selectedDate)
-  }, [atenciones, selectedDate])
+  const atencionesDelDia = useMemo(() => atenciones.filter(a => a.fecha === selectedDate), [atenciones, selectedDate])
 
   const disponibilidadDelDia = useMemo(() => {
     return disponibilidad
-      .map((item) => ({
+      .map(item => ({
         ...item,
         inicioMinutos: timeToMinutes(item.hora_inicio),
         finMinutos: timeToMinutes(item.hora_fin)
       }))
       .sort((a, b) => a.inicioMinutos - b.inicioMinutos)
   }, [disponibilidad])
+
+  const buildAgendarUrl = (slot: string) => {
+    const params = new URLSearchParams({
+      profesional_id: selectedProfesionalId,
+      fecha: selectedDate,
+      hora: slot
+    })
+    return `/agenda/nueva?${params.toString()}`
+  }
+
+  const buildBloqueoUrl = (slot?: string) => {
+    const params = new URLSearchParams({
+      profesional_id: selectedProfesionalId,
+      fecha: selectedDate,
+      es_bloqueo: 'true'
+    })
+
+    if (slot) {
+      params.set('hora', slot)
+    }
+
+    return `/agenda/nueva?${params.toString()}`
+  }
 
   const slotRows = useMemo(() => {
     return slots.map((slot) => {
@@ -139,7 +156,7 @@ const Disponibilidad = () => {
       )
 
       const estado = ocupada
-        ? 'ocupado'
+        ? (ocupada.es_bloqueo ? 'bloqueado' : 'ocupado')
         : disponibilidadDelDia.length === 0
         ? 'sin_horario'
         : dentroDeHorario
@@ -158,14 +175,22 @@ const Disponibilidad = () => {
   const dateLabel = selectedDate ? format(parseISO(selectedDate), 'EEEE dd/MM/yyyy', { locale: es }) : ''
   const disponibilidadLabel = disponibilidadDelDia.length > 0
     ? disponibilidadDelDia
-        .map((rango) => `${rango.hora_inicio.substring(0, 5)} - ${rango.hora_fin.substring(0, 5)}`)
+        .map(rango => `${rango.hora_inicio.substring(0, 5)} - ${rango.hora_fin.substring(0, 5)}`)
         .join(' · ')
     : 'Sin horario configurado para este día'
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Disponibilidad</h1>
+        {selectedProfesionalId && (
+          <Link
+            to={buildBloqueoUrl()}
+            className="inline-flex items-center justify-center rounded-md border border-orange-300 px-4 py-2 text-sm font-medium text-orange-700 hover:bg-orange-50"
+          >
+            Nuevo bloqueo
+          </Link>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-6">
@@ -240,7 +265,11 @@ const Disponibilidad = () => {
                       <Clock className="h-4 w-4 text-gray-400" />
                       <span className="font-semibold text-gray-900">{slot}</span>
                     </div>
-                    {estado === 'ocupado' ? (
+                    {estado === 'bloqueado' && ocupada ? (
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getBloqueoBadgeClass(ocupada.tipo_bloqueo)}`}>
+                        {getBloqueoLabel(ocupada.tipo_bloqueo)}
+                      </span>
+                    ) : estado === 'ocupado' ? (
                       <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
                         Ocupado
                       </span>
@@ -256,11 +285,16 @@ const Disponibilidad = () => {
                   </div>
 
                   <div className="mt-3">
-                    {estado === 'ocupado' && ocupada ? (
+                    {estado === 'bloqueado' && ocupada ? (
+                      <div className="text-sm text-gray-700">
+                        <div className="font-medium">{ocupada.tipo_atencion || getBloqueoLabel(ocupada.tipo_bloqueo)}</div>
+                        <div className="text-xs text-gray-500 mt-1">{ocupada.observaciones || 'Bloqueo operativo del horario.'}</div>
+                      </div>
+                    ) : estado === 'ocupado' && ocupada ? (
                       <div className="flex items-start gap-2 text-sm text-gray-700">
                         <User className="h-4 w-4 text-gray-400 mt-0.5" />
                         <div>
-                          <div className="font-medium">{ocupada.paciente?.nombre || 'Bloque sin paciente'}</div>
+                          <div className="font-medium">{ocupada.paciente?.nombre || '-'}</div>
                           <div className="text-xs text-gray-500">
                             {ocupada.tipos_atencion?.nombre || ocupada.tipo_atencion || '-'}
                           </div>
@@ -275,23 +309,31 @@ const Disponibilidad = () => {
                     )}
                   </div>
 
-                  <div className="mt-4 flex justify-end border-t border-gray-100 pt-3">
-                    {estado === 'ocupado' && ocupada ? (
+                  <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-3">
+                    {ocupada ? (
                       <Link
                         to={`/agenda/${ocupada.id}`}
                         className="text-medical-blue hover:text-blue-700 font-medium text-sm"
                       >
                         Ver / editar
                       </Link>
-                    ) : estado === 'disponible' ? (
-                      <Link
-                        to={`/agenda/nueva?profesional_id=${encodeURIComponent(selectedProfesionalId)}&fecha=${encodeURIComponent(selectedDate)}&hora=${encodeURIComponent(slot)}`}
-                        className="inline-flex items-center px-3 py-1.5 border border-medical-blue text-medical-blue rounded-md hover:bg-medical-blue hover:text-white transition-colors text-sm"
-                      >
-                        Agendar
-                      </Link>
                     ) : (
-                      <span className="text-sm font-medium text-gray-400">No agendable</span>
+                      <>
+                        {estado === 'disponible' && (
+                          <Link
+                            to={buildAgendarUrl(slot)}
+                            className="inline-flex items-center px-3 py-1.5 border border-medical-blue text-medical-blue rounded-md hover:bg-medical-blue hover:text-white transition-colors text-sm"
+                          >
+                            Agendar
+                          </Link>
+                        )}
+                        <Link
+                          to={buildBloqueoUrl(slot)}
+                          className="inline-flex items-center px-3 py-1.5 border border-orange-300 text-orange-700 rounded-md hover:bg-orange-50 transition-colors text-sm"
+                        >
+                          Bloquear
+                        </Link>
+                      </>
                     )}
                   </div>
                 </div>
@@ -299,82 +341,99 @@ const Disponibilidad = () => {
             </div>
 
             <div className="hidden overflow-x-auto md:block">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paciente</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {slotRows.map(({ slot, ocupada, estado }) => (
-                  <tr key={slot} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-gray-400" />
-                        <span>{slot}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {estado === 'ocupado' ? (
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                          Ocupado
-                        </span>
-                      ) : estado === 'disponible' ? (
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                          Disponible
-                        </span>
-                      ) : (
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700">
-                          {estado === 'sin_horario' ? 'Sin horario' : 'Fuera de horario'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {estado === 'ocupado' && ocupada ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Detalle</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {slotRows.map(({ slot, ocupada, estado }) => (
+                    <tr key={slot} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-gray-400" />
+                          <Clock className="h-4 w-4 text-gray-400" />
+                          <span>{slot}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {estado === 'bloqueado' && ocupada ? (
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getBloqueoBadgeClass(ocupada.tipo_bloqueo)}`}>
+                            {getBloqueoLabel(ocupada.tipo_bloqueo)}
+                          </span>
+                        ) : estado === 'ocupado' ? (
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                            Ocupado
+                          </span>
+                        ) : estado === 'disponible' ? (
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                            Disponible
+                          </span>
+                        ) : (
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700">
+                            {estado === 'sin_horario' ? 'Sin horario' : 'Fuera de horario'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {estado === 'bloqueado' && ocupada ? (
                           <div>
-                            <div className="font-medium">{ocupada.paciente?.nombre || '-'}</div>
-                            <div className="text-xs text-gray-500">
-                              {ocupada.tipos_atencion?.nombre || '-'}
+                            <div className="font-medium">{ocupada.tipo_atencion || getBloqueoLabel(ocupada.tipo_bloqueo)}</div>
+                            <div className="text-xs text-gray-500">{ocupada.observaciones || 'Bloqueo operativo del horario.'}</div>
+                          </div>
+                        ) : estado === 'ocupado' && ocupada ? (
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-gray-400" />
+                            <div>
+                              <div className="font-medium">{ocupada.paciente?.nombre || '-'}</div>
+                              <div className="text-xs text-gray-500">
+                                {ocupada.tipos_atencion?.nombre || ocupada.tipo_atencion || '-'}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ) : estado === 'disponible' ? (
-                        <span className="text-gray-500">Libre dentro del horario</span>
-                      ) : estado === 'sin_horario' ? (
-                        <span className="text-gray-400">Sin horario configurado</span>
-                      ) : (
-                        <span className="text-gray-400">Fuera de horario</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                      {estado === 'ocupado' && ocupada ? (
-                        <Link
-                          to={`/agenda/${ocupada.id}`}
-                          className="text-medical-blue hover:text-blue-700 font-medium"
-                        >
-                          Ver / editar
-                        </Link>
-                      ) : estado === 'disponible' ? (
-                        <Link
-                          to={`/agenda/nueva?profesional_id=${encodeURIComponent(selectedProfesionalId)}&fecha=${encodeURIComponent(selectedDate)}&hora=${encodeURIComponent(slot)}`}
-                          className="inline-flex items-center px-3 py-1.5 border border-medical-blue text-medical-blue rounded-md hover:bg-medical-blue hover:text-white transition-colors"
-                        >
-                          Agendar
-                        </Link>
-                      ) : (
-                        <span className="text-gray-400">No agendable</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        ) : estado === 'disponible' ? (
+                          <span className="text-gray-500">Libre dentro del horario</span>
+                        ) : estado === 'sin_horario' ? (
+                          <span className="text-gray-400">Sin horario configurado</span>
+                        ) : (
+                          <span className="text-gray-400">Fuera de horario</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                        {ocupada ? (
+                          <Link
+                            to={`/agenda/${ocupada.id}`}
+                            className="text-medical-blue hover:text-blue-700 font-medium"
+                          >
+                            Ver / editar
+                          </Link>
+                        ) : (
+                          <div className="flex justify-end gap-2">
+                            {estado === 'disponible' && (
+                              <Link
+                                to={buildAgendarUrl(slot)}
+                                className="inline-flex items-center px-3 py-1.5 border border-medical-blue text-medical-blue rounded-md hover:bg-medical-blue hover:text-white transition-colors"
+                              >
+                                Agendar
+                              </Link>
+                            )}
+                            <Link
+                              to={buildBloqueoUrl(slot)}
+                              className="inline-flex items-center px-3 py-1.5 border border-orange-300 text-orange-700 rounded-md hover:bg-orange-50 transition-colors"
+                            >
+                              Bloquear
+                            </Link>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
       </div>

@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase'
 export { supabase }
 import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision, AuditLog, ProfesionalDisponibilidad } from '@/types/database'
+import { eachDayOfInterval, format, parseISO } from 'date-fns'
+import { buildBloqueoSlots } from '@/utils/bloqueos'
 import { getFinancialAmount, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 const applyCentroFilter = <T>(query: T, centroId?: string | null) => {
@@ -601,6 +603,46 @@ export const atencionesService = {
     
     if (error) throw error
     return data
+  },
+
+  async createBloqueosOperativos(
+    baseAtencion: Omit<Atencion, 'id' | 'created_at' | 'updated_at'>,
+    config?: {
+      fechaFin?: string
+      horaFin?: string
+    }
+  ): Promise<Atencion[]> {
+    const fechaFin = config?.fechaFin || baseAtencion.fecha
+    const horaFin = config?.horaFin || baseAtencion.hora
+    const fechas = eachDayOfInterval({
+      start: parseISO(baseAtencion.fecha),
+      end: parseISO(fechaFin)
+    }).map((date) => format(date, 'yyyy-MM-dd'))
+    const slots = buildBloqueoSlots(baseAtencion.hora, horaFin)
+
+    if (slots.length === 0) {
+      throw new Error('El rango horario del bloqueo no es válido')
+    }
+
+    const bloqueos = fechas.flatMap((fecha) =>
+      slots.map((hora) => ({
+        ...baseAtencion,
+        fecha,
+        hora
+      }))
+    )
+
+    for (const bloqueo of bloqueos) {
+      await validateAtencionOverlap(bloqueo)
+    }
+
+    const { data, error } = await supabase
+      .from('atenciones')
+      .insert(bloqueos)
+      .select()
+
+    if (error) throw error
+    return data || []
   },
 
   async getByPlanTratamientoId(planTratamientoId: string, sucursalId?: string, centroId?: string): Promise<Atencion[]> {
