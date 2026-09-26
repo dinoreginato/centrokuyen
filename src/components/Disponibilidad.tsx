@@ -287,7 +287,7 @@ const Disponibilidad = () => {
                   <div className="mt-3">
                     {estado === 'bloqueado' && ocupada ? (
                       <div className="text-sm text-gray-700">
-                        <div className="font-medium">{ocupada.tipo_atencion || getBloqueoLabel(ocupada.tipo_bloqueo)}</div>
+                        <div className="font-medium">{getBloqueoLabel(ocupada.tipo_bloqueo)}</div>
                         <div className="text-xs text-gray-500 mt-1">{ocupada.observaciones || 'Bloqueo operativo del horario.'}</div>
                       </div>
                     ) : estado === 'ocupado' && ocupada ? (
@@ -381,7 +381,7 @@ const Disponibilidad = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                         {estado === 'bloqueado' && ocupada ? (
                           <div>
-                            <div className="font-medium">{ocupada.tipo_atencion || getBloqueoLabel(ocupada.tipo_bloqueo)}</div>
+                            <div className="font-medium">{getBloqueoLabel(ocupada.tipo_bloqueo)}</div>
                             <div className="text-xs text-gray-500">{ocupada.observaciones || 'Bloqueo operativo del horario.'}</div>
                           </div>
                         ) : estado === 'ocupado' && ocupada ? (

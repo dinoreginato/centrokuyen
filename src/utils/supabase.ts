@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase'
 export { supabase }
 import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision, AuditLog, ProfesionalDisponibilidad } from '@/types/database'
 import { eachDayOfInterval, format, parseISO } from 'date-fns'
-import { buildBloqueoSlots } from '@/utils/bloqueos'
+import { buildBloqueoSlots, getBloqueoLabel } from '@/utils/bloqueos'
 import { getFinancialAmount, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 
 const applyCentroFilter = <T>(query: T, centroId?: string | null) => {
@@ -435,7 +435,7 @@ const validateAtencionOverlap = async (
       ? overlappingPaciente[0]?.nombre
       : overlappingPaciente?.nombre
     const tipoExistente = overlapping.es_bloqueo
-      ? (overlapping.tipo_atencion || 'bloque no clínico')
+      ? getBloqueoLabel((overlapping as any).tipo_bloqueo) || 'bloque no clínico'
       : (pacienteNombre ? `la atención de ${pacienteNombre}` : 'otra atención')
 
     throw new Error(`La profesional ya tiene ocupado ese horario a las ${horaExistente} con ${tipoExistente}. Puedes usar la misma hora solo en otra profesional.`)

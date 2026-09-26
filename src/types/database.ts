@@ -68,7 +68,7 @@ export interface Atencion {
   total_sesiones?: number | null
   fecha: string
   hora: string
-  tipo_atencion: string
+  tipo_atencion: string | null
   valor_cobrado: number
   pagado: boolean
   estado_cita?: EstadoCita
