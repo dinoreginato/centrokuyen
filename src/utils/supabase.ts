@@ -636,13 +636,14 @@ export const atencionesService = {
       await validateAtencionOverlap(bloqueo)
     }
 
-    const { data, error } = await supabase
-      .from('atenciones')
-      .insert(bloqueos)
-      .select()
+    const created: Atencion[] = []
 
-    if (error) throw error
-    return data || []
+    for (const bloqueo of bloqueos) {
+      const registro = await this.create(bloqueo)
+      created.push(registro)
+    }
+
+    return created
   },
 
   async getByPlanTratamientoId(planTratamientoId: string, sucursalId?: string, centroId?: string): Promise<Atencion[]> {

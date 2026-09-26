@@ -23,6 +23,27 @@ const createPlanId = () => {
   return `plan-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (error && typeof error === 'object') {
+    const possibleMessage = 'message' in error ? error.message : null
+    const possibleDetails = 'details' in error ? error.details : null
+    const possibleHint = 'hint' in error ? error.hint : null
+
+    const parts = [possibleMessage, possibleDetails, possibleHint]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+
+    if (parts.length > 0) {
+      return parts.join(' | ')
+    }
+  }
+
+  return ''
+}
+
 type AtencionFormData = {
   profesional_id: string
   paciente_id: string
@@ -506,7 +527,7 @@ const AtencionForm = () => {
 
       navigate('/agenda')
     } catch (error) {
-      const rawMessage = error instanceof Error ? error.message : ''
+      const rawMessage = getErrorMessage(error)
       toast.error(
         rawMessage
           ? `Error al ${isEditing ? 'actualizar' : 'crear'} la atención: ${rawMessage}`
