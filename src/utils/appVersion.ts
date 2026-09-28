@@ -5,6 +5,24 @@ export const APP_UPDATE_EVENT = 'app-update-available'
 const APP_VERSION_STORAGE_KEY = 'centrokuyen-app-version'
 const APP_VERSION_RELOAD_PREFIX = 'centrokuyen-app-version-reload'
 
+export const getCurrentAppVersion = () => __APP_VERSION__
+
+export const formatAppVersionLabel = (version?: string | null) => {
+  if (!version) {
+    return 'Sin dato'
+  }
+
+  const parsedDate = new Date(version)
+  if (Number.isNaN(parsedDate.getTime())) {
+    return version
+  }
+
+  return parsedDate.toLocaleString('es-CL', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+}
+
 export const cleanupLegacyServiceWorkers = async () => {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return
@@ -32,14 +50,7 @@ const emitAppUpdateAvailable = (remoteVersion: string) => {
   }))
 }
 
-export const syncAppVersion = async () => {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  const currentVersion = __APP_VERSION__
-  localStorage.setItem(APP_VERSION_STORAGE_KEY, currentVersion)
-
+export const fetchRemoteAppVersion = async () => {
   try {
     const response = await fetch(`/version.json?t=${Date.now()}`, {
       cache: 'no-store',
@@ -49,11 +60,27 @@ export const syncAppVersion = async () => {
     })
 
     if (!response.ok) {
-      return
+      return null
     }
 
     const payload = await response.json() as { version?: string }
-    const remoteVersion = payload.version?.trim()
+    return payload.version?.trim() || null
+  } catch (error) {
+    console.error('Error checking app version:', error)
+    return null
+  }
+}
+
+export const syncAppVersion = async () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const currentVersion = __APP_VERSION__
+  localStorage.setItem(APP_VERSION_STORAGE_KEY, currentVersion)
+
+  try {
+    const remoteVersion = await fetchRemoteAppVersion()
 
     if (!remoteVersion || remoteVersion === currentVersion) {
       return

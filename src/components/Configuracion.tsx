@@ -6,6 +6,7 @@ import { useSucursal } from '@/contexts/SucursalContext'
 import { auditService, centrosService } from '@/utils/supabase'
 import { AuditLog } from '@/types/database'
 import { formatCLP } from '@/utils/currency'
+import { applyAppUpdate, fetchRemoteAppVersion, formatAppVersionLabel, getCurrentAppVersion } from '@/utils/appVersion'
 import SucursalesList from './SucursalesList'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
@@ -20,6 +21,12 @@ const Configuracion = () => {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [loadingAudit, setLoadingAudit] = useState(true)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [currentAppVersion] = useState(getCurrentAppVersion())
+  const [remoteAppVersion, setRemoteAppVersion] = useState<string | null>(null)
+  const [checkingVersion, setCheckingVersion] = useState(false)
+  const [applyingVersionUpdate, setApplyingVersionUpdate] = useState(false)
+  const [lastVersionCheckAt, setLastVersionCheckAt] = useState<string | null>(null)
+  const [versionCheckError, setVersionCheckError] = useState<string | null>(null)
   const [auditFilters, setAuditFilters] = useState({
     tableName: 'todos',
     action: 'todos',
@@ -55,6 +62,10 @@ const Configuracion = () => {
     loadAuditLogs()
   }, [auditFilters])
 
+  useEffect(() => {
+    void loadVersionStatus()
+  }, [])
+
   const loadAuditLogs = async () => {
     try {
       setLoadingAudit(true)
@@ -64,6 +75,42 @@ const Configuracion = () => {
       console.error('Error loading audit logs:', error)
     } finally {
       setLoadingAudit(false)
+    }
+  }
+
+  const loadVersionStatus = async () => {
+    try {
+      setCheckingVersion(true)
+      const version = await fetchRemoteAppVersion()
+      if (!version) {
+        setRemoteAppVersion(null)
+        setVersionCheckError('No se pudo consultar la versión publicada')
+        setLastVersionCheckAt(new Date().toISOString())
+        return
+      }
+
+      setRemoteAppVersion(version)
+      setVersionCheckError(null)
+      setLastVersionCheckAt(new Date().toISOString())
+    } finally {
+      setCheckingVersion(false)
+    }
+  }
+
+  const handleApplyVersionUpdate = async () => {
+    const targetVersion = remoteAppVersion
+    if (!targetVersion) {
+      toast.error('No se pudo identificar una versión publicada')
+      return
+    }
+
+    try {
+      setApplyingVersionUpdate(true)
+      await applyAppUpdate(targetVersion)
+    } catch (error) {
+      console.error('Error updating app version:', error)
+      toast.error('No se pudo actualizar la aplicación')
+      setApplyingVersionUpdate(false)
     }
   }
 
@@ -399,6 +446,15 @@ const Configuracion = () => {
     }
   }
 
+  const isVersionUpdated = !!remoteAppVersion && remoteAppVersion === currentAppVersion
+  const versionStatusLabel = checkingVersion
+    ? 'Comprobando versión publicada...'
+    : versionCheckError
+      ? versionCheckError
+      : isVersionUpdated
+      ? 'Este equipo ya tiene la versión más reciente'
+      : 'Hay una versión más nueva disponible para este equipo'
+
   if (loading) {
     return <PageLoader label="Cargando configuración del centro..." />
   }
@@ -645,14 +701,51 @@ const Configuracion = () => {
 
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Información del Sistema</h2>
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Control de actualizaciones</p>
+              <p className={`text-sm ${versionCheckError ? 'text-rose-700' : isVersionUpdated ? 'text-emerald-700' : 'text-amber-700'}`}>
+                {versionStatusLabel}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {lastVersionCheckAt
+                  ? `Ultima comprobacion: ${new Date(lastVersionCheckAt).toLocaleString()}`
+                  : 'Todavia no se ha comprobado la version publicada'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={loadVersionStatus}
+                disabled={checkingVersion}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw className={`h-4 w-4 ${checkingVersion ? 'animate-spin' : ''}`} />
+                <span>{checkingVersion ? 'Comprobando...' : 'Comprobar version'}</span>
+              </button>
+              {!isVersionUpdated && remoteAppVersion && (
+                <button
+                  type="button"
+                  onClick={handleApplyVersionUpdate}
+                  disabled={applyingVersionUpdate}
+                  className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-4 w-4 ${applyingVersionUpdate ? 'animate-spin' : ''}`} />
+                  <span>{applyingVersionUpdate ? 'Actualizando...' : 'Actualizar este equipo'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="text-gray-600">Versión del Sistema:</p>
-            <p className="font-medium">v1.0.0</p>
+            <p className="text-gray-600">Versión en este equipo:</p>
+            <p className="font-medium">{formatAppVersionLabel(currentAppVersion)}</p>
           </div>
           <div>
-            <p className="text-gray-600">Última Actualización:</p>
-            <p className="font-medium">{new Date().toLocaleDateString()}</p>
+            <p className="text-gray-600">Versión publicada:</p>
+            <p className="font-medium">{checkingVersion ? 'Comprobando...' : formatAppVersionLabel(remoteAppVersion)}</p>
           </div>
           <div>
             <p className="text-gray-600">Base de Datos:</p>
