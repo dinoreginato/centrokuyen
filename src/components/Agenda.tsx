@@ -9,6 +9,7 @@ import { atencionesService } from '@/utils/supabase'
 import { format as dateFormat, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfMonth, endOfMonth, isSameMonth, differenceInYears } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { getEstadoCitaBadgeClass, getEstadoCitaCardClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
+import { getBloqueoBadgeClass, getBloqueoLabel } from '@/utils/bloqueos'
 import { canManageAtencion, canManagePayment, hasPermission } from '@/utils/permissions'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
@@ -239,6 +240,21 @@ Gracias 🙌🏻`
     return `Sesión ${match[1]}/${match[2]}`
   }
 
+  const getBloqueoTitle = (atencion: Atencion) => {
+    const observacion = atencion.observaciones?.trim()
+    if (observacion) {
+      return observacion
+    }
+
+    return getBloqueoLabel(atencion.tipo_bloqueo)
+  }
+
+  const getBloqueoDetail = (atencion: Atencion) => {
+    if (!atencion.es_bloqueo) return null
+
+    return getBloqueoLabel(atencion.tipo_bloqueo)
+  }
+
   const atencionesFiltradas = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
 
@@ -280,8 +296,11 @@ Gracias 🙌🏻`
       </div>
 
       <div className="mb-2">
-        <div className={`font-semibold text-gray-900 truncate ${compact ? 'text-sm' : ''}`} title={atencion.paciente?.nombre}>
-          {atencion.es_bloqueo ? atencion.tipo_atencion : atencion.paciente?.nombre}
+        <div
+          className={`font-semibold text-gray-900 truncate ${compact ? 'text-sm' : ''}`}
+          title={atencion.es_bloqueo ? getBloqueoTitle(atencion) : atencion.paciente?.nombre}
+        >
+          {atencion.es_bloqueo ? getBloqueoTitle(atencion) : atencion.paciente?.nombre}
         </div>
 
         {(() => {
@@ -296,7 +315,19 @@ Gracias 🙌🏻`
         })()}
 
         {(() => {
-          if (atencion.es_bloqueo) return null
+          if (atencion.es_bloqueo) {
+            const bloqueoDetail = getBloqueoDetail(atencion)
+            if (!bloqueoDetail) return null
+
+            return (
+              <div className="mt-1">
+                <span className={`inline-flex items-center rounded-full font-medium border ${getBloqueoBadgeClass(atencion.tipo_bloqueo)} ${compact ? 'px-2 py-0.5 text-xs' : 'px-2 py-0.5 text-[10px]'}`}>
+                  {bloqueoDetail}
+                </span>
+              </div>
+            )
+          }
+
           const edad = getEdadPaciente(atencion)
           return edad === null ? null : (
             <div className={`text-gray-500 truncate mt-0.5 ${compact ? 'text-xs' : 'text-[10px]'}`}>
@@ -312,7 +343,9 @@ Gracias 🙌🏻`
         )}
         
         <div className={`text-gray-500 truncate mt-0.5 ${compact ? 'text-xs' : 'text-[10px]'}`}>
-          {atencion.tipos_atencion?.nombre || atencion.tipo_atencion}
+          {atencion.es_bloqueo
+            ? 'Horario bloqueado'
+            : atencion.tipos_atencion?.nombre || atencion.tipo_atencion}
         </div>
 
         <div className="mt-1">
