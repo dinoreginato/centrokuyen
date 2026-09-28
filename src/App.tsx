@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
@@ -7,6 +7,7 @@ import Navigation from '@/components/Navigation'
 import Header from '@/components/Header'
 import PageLoader from '@/components/ui/PageLoader'
 import { AppPermission, hasPermission } from '@/utils/permissions'
+import { APP_UPDATE_EVENT, applyAppUpdate } from '@/utils/appVersion'
 import '@/utils/seedConsole' // Importar el script de datos de prueba
 import './App.css'
 
@@ -49,6 +50,33 @@ const AppContent = () => {
   const { isAuthenticated } = useAuth()
   const { loading: tenantLoading } = useSucursal()
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  const [availableVersion, setAvailableVersion] = useState<string | null>(null)
+  const [updatingVersion, setUpdatingVersion] = useState(false)
+
+  useEffect(() => {
+    const handleUpdateAvailable = (event: Event) => {
+      const customEvent = event as CustomEvent<{ version?: string }>
+      const nextVersion = customEvent.detail?.version
+      if (!nextVersion) return
+
+      setAvailableVersion((currentVersion) => currentVersion || nextVersion)
+    }
+
+    window.addEventListener(APP_UPDATE_EVENT, handleUpdateAvailable)
+    return () => window.removeEventListener(APP_UPDATE_EVENT, handleUpdateAvailable)
+  }, [])
+
+  const handleApplyUpdate = async () => {
+    if (!availableVersion || updatingVersion) return
+
+    try {
+      setUpdatingVersion(true)
+      await applyAppUpdate(availableVersion)
+    } catch (error) {
+      console.error('Error applying app update:', error)
+      setUpdatingVersion(false)
+    }
+  }
   
   if (!isAuthenticated) {
     return (
@@ -69,6 +97,35 @@ const AppContent = () => {
         onClose={() => setIsMobileNavOpen(false)}
       />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        {availableVersion && (
+          <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">Hay una nueva version disponible</p>
+                <p className="text-emerald-800">
+                  Actualiza la app para cargar los cambios mas recientes.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAvailableVersion(null)}
+                  className="rounded-md border border-emerald-300 bg-white px-3 py-2 font-medium text-emerald-800 transition hover:bg-emerald-100"
+                >
+                  Despues
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyUpdate}
+                  disabled={updatingVersion}
+                  className="rounded-md bg-emerald-600 px-4 py-2 font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {updatingVersion ? 'Actualizando...' : 'Actualizar ahora'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <Header onMenuToggle={() => setIsMobileNavOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <Suspense fallback={<PageLoader label="Cargando módulo..." />}>
