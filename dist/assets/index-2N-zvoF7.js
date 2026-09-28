@@ -1,1 +1,0 @@
-import{e as r,t as a}from"./index-Bcbs74GQ.js";function o(e){r(1,arguments);var t=a(e),s=t.getMonth();return t.setFullYear(t.getFullYear(),s+1,0),t.setHours(23,59,59,999),t}function u(e){r(1,arguments);var t=a(e);return t.setDate(1),t.setHours(0,0,0,0),t}export{o as e,u as s};
