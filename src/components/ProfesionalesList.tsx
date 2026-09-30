@@ -43,7 +43,8 @@ const ProfesionalesList = () => {
       setProfesionalToDelete(null)
       loadProfesionales()
     } catch (error) {
-      toast.error('Error al eliminar profesional')
+      const message = error instanceof Error ? error.message : 'Error al eliminar profesional'
+      toast.error(message)
       console.error('Error deleting profesional:', error)
     }
   }

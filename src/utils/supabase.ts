@@ -141,6 +141,7 @@ export const profesionalesService = {
     let query = supabase
       .from('profesionales')
       .select('*')
+      .eq('activo', true)
       .order('nombre')
 
     query = applyCentroFilter(query, centroId)
@@ -205,16 +206,51 @@ export const profesionalesService = {
 
   async delete(id: string): Promise<void> {
     const oldData = await this.getById(id)
-    const { error } = await supabase
-      .from('profesionales')
-      .delete()
-      .eq('id', id)
-    
-    if (error) throw error
+    if (!oldData) {
+      throw new Error('Profesional no encontrado')
+    }
+
+    const [
+      atencionesUsage,
+      pagosUsage,
+      usuariosUsage
+    ] = await Promise.all([
+      supabase.from('atenciones').select('*', { count: 'exact', head: true }).eq('profesional_id', id),
+      supabase.from('pagos_profesionales').select('*', { count: 'exact', head: true }).eq('profesional_id', id),
+      supabase.from('usuarios').select('*', { count: 'exact', head: true }).eq('profesional_id', id)
+    ])
+
+    const usageError = [atencionesUsage, pagosUsage, usuariosUsage].find(result => result.error)?.error
+    if (usageError) throw usageError
+
+    const hasHistoricalUsage = (atencionesUsage.count || 0) > 0 || (pagosUsage.count || 0) > 0
+    const hasLinkedUsers = (usuariosUsage.count || 0) > 0
+
+    if (hasHistoricalUsage || hasLinkedUsers) {
+      const { error } = await supabase
+        .from('profesionales')
+        .update({ activo: false })
+        .eq('id', id)
+
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('profesionales')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+    }
+
     if (oldData) {
       await auditService.logAction('profesionales', id, {
         action: 'SOFT_DELETE',
         oldData,
+        metadata: {
+          delete_mode: hasHistoricalUsage || hasLinkedUsers ? 'soft' : 'hard',
+          had_historical_usage: hasHistoricalUsage,
+          had_linked_users: hasLinkedUsers
+        },
         centroId: oldData.centro_id ?? null,
         sucursalId: oldData.sucursal_id ?? null
       })
@@ -1007,6 +1043,7 @@ export const tiposAtencionService = {
     let query = supabase
       .from('tipos_atencion')
       .select('*')
+      .eq('activo', true)
       .order('nombre')
 
     query = applyCentroFilter(query, centroId)
@@ -1073,16 +1110,43 @@ export const tiposAtencionService = {
 
   async delete(id: string): Promise<void> {
     const oldData = await this.getById(id)
-    const { error } = await supabase
-      .from('tipos_atencion')
-      .delete()
-      .eq('id', id)
-    
-    if (error) throw error
+    if (!oldData) {
+      throw new Error('Tipo de atención no encontrado')
+    }
+
+    const { count, error: usageError } = await supabase
+      .from('atenciones')
+      .select('*', { count: 'exact', head: true })
+      .eq('tipo_atencion', id)
+
+    if (usageError) throw usageError
+
+    const hasHistoricalUsage = (count || 0) > 0
+
+    if (hasHistoricalUsage) {
+      const { error } = await supabase
+        .from('tipos_atencion')
+        .update({ activo: false })
+        .eq('id', id)
+
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('tipos_atencion')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+    }
+
     if (oldData) {
       await auditService.logAction('tipos_atencion', id, {
         action: 'SOFT_DELETE',
         oldData,
+        metadata: {
+          delete_mode: hasHistoricalUsage ? 'soft' : 'hard',
+          had_historical_usage: hasHistoricalUsage
+        },
         centroId: oldData.centro_id ?? null,
         sucursalId: oldData.sucursal_id ?? null
       })
@@ -1401,6 +1465,7 @@ export const usuariosService = {
     const { data, error } = await supabase
       .from('usuarios')
       .select(usuarioSelect)
+      .eq('activo', true)
       .order('nombre')
     
     if (error) throw error
@@ -1481,15 +1546,57 @@ export const usuariosService = {
 
   async delete(id: string): Promise<void> {
     const oldData = await this.getById(id)
-    const { error } = await supabase.rpc('delete_application_user', {
-      p_usuario_id: id
-    })
-    
-    if (error) throw error
+    if (!oldData) {
+      throw new Error('Usuario no encontrado')
+    }
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user?.id && oldData.auth_user_id === session.user.id) {
+      throw new Error('No puedes eliminar tu propio usuario')
+    }
+
+    const auditChecks = await Promise.all([
+      oldData.auth_user_id
+        ? supabase.from('audit_logs').select('*', { count: 'exact', head: true }).eq('changed_by', oldData.auth_user_id)
+        : Promise.resolve({ count: 0, error: null } as const),
+      supabase.from('audit_logs').select('*', { count: 'exact', head: true }).eq('changed_by_usuario_id', id)
+    ])
+
+    const auditError = auditChecks.find(result => result.error)?.error
+    if (auditError) throw auditError
+
+    const hasHistoricalUsage = (auditChecks[0].count || 0) > 0 || (auditChecks[1].count || 0) > 0
+
+    if (hasHistoricalUsage) {
+      const { error } = await supabase.rpc('update_application_user', {
+        p_usuario_id: id,
+        p_email: oldData.email,
+        p_password: null,
+        p_nombre: oldData.nombre,
+        p_rol: oldData.rol,
+        p_centro_id: oldData.centro_id ?? null,
+        p_sucursal_id: oldData.sucursal_id ?? null,
+        p_profesional_id: oldData.profesional_id ?? null,
+        p_activo: false
+      })
+
+      if (error) throw error
+    } else {
+      const { error } = await supabase.rpc('delete_application_user', {
+        p_usuario_id: id
+      })
+
+      if (error) throw error
+    }
+
     if (oldData) {
       await auditService.logAction('usuarios', id, {
         action: 'SOFT_DELETE',
         oldData,
+        metadata: {
+          delete_mode: hasHistoricalUsage ? 'soft' : 'hard',
+          had_historical_usage: hasHistoricalUsage
+        },
         centroId: oldData.centro_id ?? null,
         sucursalId: oldData.sucursal_id ?? null
       })

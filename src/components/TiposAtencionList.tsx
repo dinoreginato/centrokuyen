@@ -42,7 +42,8 @@ const TiposAtencionList = () => {
       setTipoToDelete(null)
       loadTipos()
     } catch (error) {
-      toast.error('Error al eliminar tipo de atención')
+      const message = error instanceof Error ? error.message : 'Error al eliminar tipo de atención'
+      toast.error(message)
       console.error('Error deleting tipo:', error)
     }
   }

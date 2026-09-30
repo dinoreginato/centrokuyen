@@ -180,7 +180,9 @@ export default function UsuariosList() {
       setUsuarioToDelete(null)
       loadData()
     } catch (error) {
-      toast.error('Error al eliminar usuario')
+      const message = error instanceof Error ? error.message : 'Error al eliminar usuario'
+      toast.error(message)
+      console.error('Error deleting usuario:', error)
     }
   }
 
