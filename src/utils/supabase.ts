@@ -1568,19 +1568,28 @@ export const usuariosService = {
     const hasHistoricalUsage = (auditChecks[0].count || 0) > 0 || (auditChecks[1].count || 0) > 0
 
     if (hasHistoricalUsage) {
-      const { error } = await supabase.rpc('update_application_user', {
-        p_usuario_id: id,
-        p_email: oldData.email,
-        p_password: null,
-        p_nombre: oldData.nombre,
-        p_rol: oldData.rol,
-        p_centro_id: oldData.centro_id ?? null,
-        p_sucursal_id: oldData.sucursal_id ?? null,
-        p_profesional_id: oldData.profesional_id ?? null,
-        p_activo: false
-      })
+      if (oldData.auth_user_id) {
+        const { error } = await supabase.rpc('update_application_user', {
+          p_usuario_id: id,
+          p_email: oldData.email,
+          p_password: null,
+          p_nombre: oldData.nombre,
+          p_rol: oldData.rol,
+          p_centro_id: oldData.centro_id ?? null,
+          p_sucursal_id: oldData.sucursal_id ?? null,
+          p_profesional_id: oldData.profesional_id ?? null,
+          p_activo: false
+        })
 
-      if (error) throw error
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('usuarios')
+          .update({ activo: false })
+          .eq('id', id)
+
+        if (error) throw error
+      }
     } else {
       const { error } = await supabase.rpc('delete_application_user', {
         p_usuario_id: id
