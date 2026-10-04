@@ -8,6 +8,8 @@ import { format as dateFormat, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { exportUtils } from '@/utils/export'
 import { formatCLP } from '@/utils/currency'
+import { getFinancialAmount, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
+import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 
@@ -117,6 +119,8 @@ const Reportes = () => {
   }
 
   const calcularPagoProfesional = (atencion: Atencion) => {
+    if (!isBillableAtencion(atencion)) return 0
+
     const profesional = profesionales.find(p => p.id === atencion.profesional_id)
     if (!profesional) return 0
     
@@ -141,6 +145,24 @@ const Reportes = () => {
     return 0
   }
 
+  const getReporteEstadoLabel = (atencion: Atencion) => {
+    if (!isBillableAtencion(atencion)) {
+      return getEstadoCitaLabel(atencion.estado_cita)
+    }
+
+    return atencion.pagado ? 'Pagado' : 'Pendiente'
+  }
+
+  const getReporteEstadoClass = (atencion: Atencion) => {
+    if (!isBillableAtencion(atencion)) {
+      return getEstadoCitaBadgeClass(atencion.estado_cita)
+    }
+
+    return atencion.pagado
+      ? 'bg-green-100 text-green-800 border-green-200'
+      : 'bg-yellow-100 text-yellow-800 border-yellow-200'
+  }
+
   const atencionesPorProfesional = useMemo(() => {
     const atencionesPorProfesional: { [key: string]: { profesional: Profesional, atenciones: Atencion[], total: number, pagosPendientes: number } } = {}
     
@@ -159,8 +181,7 @@ const Reportes = () => {
         const pagoProfesional = calcularPagoProfesional(atencion)
         atencionesPorProfesional[profesional.id].total += pagoProfesional
         
-        // Sumar solo si no está pagado
-        if (!atencion.pagado) {
+        if (isBillableAtencion(atencion) && !atencion.pagado) {
           atencionesPorProfesional[profesional.id].pagosPendientes += pagoProfesional
         }
       }
@@ -232,7 +253,7 @@ const Reportes = () => {
       professional: profesional.nombre,
       speciality: profesional.especialidad,
       appointments: atenciones.length,
-      totalIncome: atenciones.reduce((sum, atencion) => sum + (atencion.valor_cobrado || 0), 0),
+      totalIncome: sumFinancialAmounts(atenciones),
       totalPayment: total,
       pendingPayment: pagosPendientes,
       paymentType: profesional.porcentaje_pago > 0 ? `${profesional.porcentaje_pago}%` : formatCLP(profesional.monto_fijo_pago)
@@ -321,8 +342,10 @@ const Reportes = () => {
               hora: item.hora.substring(0, 5),
               paciente: item.paciente?.nombre || '',
               tipo: item.tipos_atencion?.nombre || item.tipo_atencion || '',
-              valor: item.valor_cobrado,
-              pagado: item.pagado ? 'si' : 'no',
+              valor: getFinancialAmount(item),
+              estado_cita: getEstadoCitaLabel(item.estado_cita),
+              estado_cobro: getReporteEstadoLabel(item),
+              pagado: isBillableAtencion(item) && item.pagado ? 'si' : 'no',
               pago_profesional: calcularPagoProfesional(item)
             })),
             `reporte_profesional_${professional.nombre.replace(/\s+/g, '_')}_${monthName}_${year}`
@@ -331,6 +354,9 @@ const Reportes = () => {
           exportUtils.toJSON(
             professionalAppointments.map((item) => ({
               ...item,
+              estado_cita_label: getEstadoCitaLabel(item.estado_cita),
+              estado_cobro: getReporteEstadoLabel(item),
+              valor_reportable: getFinancialAmount(item),
               pago_profesional: calcularPagoProfesional(item)
             })),
             `reporte_profesional_${professional.nombre.replace(/\s+/g, '_')}_${monthName}_${year}`
@@ -399,8 +425,10 @@ const Reportes = () => {
               paciente: item.paciente?.nombre || '',
               profesional: item.profesional?.nombre || '',
               tipo: item.tipos_atencion?.nombre || item.tipo_atencion || '',
-              valor: item.valor_cobrado,
-              pagado: item.pagado ? 'si' : 'no',
+              valor: getFinancialAmount(item),
+              estado_cita: getEstadoCitaLabel(item.estado_cita),
+              estado_cobro: getReporteEstadoLabel(item),
+              pagado: isBillableAtencion(item) && item.pagado ? 'si' : 'no',
               pago_profesional: calcularPagoProfesional(item)
             })),
             `reporte_mensual_${monthName}_${year}`
@@ -861,7 +889,7 @@ const Reportes = () => {
                   <div>
                     <p className="text-sm font-medium text-gray-600">Ingresos generados</p>
                     <p className="text-3xl font-bold text-green-600">
-                      {formatCLP(atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0))}
+                      {formatCLP(sumFinancialAmounts(atenciones))}
                     </p>
                   </div>
                   <div className="bg-green-600 text-white rounded-full p-3">
@@ -890,7 +918,7 @@ const Reportes = () => {
                     <p className="text-sm font-medium text-gray-600">Resultado profesional</p>
                     <p className="text-3xl font-bold text-purple-600">
                       {formatCLP(
-                        atenciones.reduce((sum, a) => sum + a.valor_cobrado, 0) -
+                        sumFinancialAmounts(atenciones) -
                           atenciones.reduce((sum, a) => sum + calcularPagoProfesional(a), 0)
                       )}
                     </p>
@@ -987,7 +1015,7 @@ const Reportes = () => {
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className="font-medium">{formatCLP(atencion.valor_cobrado)}</span>
+                        <span className="font-medium">{formatCLP(getFinancialAmount(atencion))}</span>
                         <span className="text-green-600 ml-2">
                           ({formatCLP(calcularPagoProfesional(atencion))})
                         </span>
@@ -1033,10 +1061,8 @@ const Reportes = () => {
                       </p>
                       <p className="text-sm text-gray-700">{atencion.paciente?.nombre || 'Sin paciente'}</p>
                     </div>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      atencion.pagado ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {atencion.pagado ? 'Pagado' : 'Pendiente'}
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getReporteEstadoClass(atencion)}`}>
+                      {getReporteEstadoLabel(atencion)}
                     </span>
                   </div>
 
@@ -1052,7 +1078,7 @@ const Reportes = () => {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs uppercase tracking-wide text-gray-500">Valor</p>
-                        <p className="font-semibold text-gray-900">{formatCLP(atencion.valor_cobrado)}</p>
+                        <p className="font-semibold text-gray-900">{formatCLP(getFinancialAmount(atencion))}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-xs uppercase tracking-wide text-gray-500">Pago profesional</p>
@@ -1107,16 +1133,14 @@ const Reportes = () => {
                       {atencion.tipos_atencion?.nombre || atencion.tipo_atencion_nombre || 'Sin tipo'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCLP(atencion.valor_cobrado)}
+                      {formatCLP(getFinancialAmount(atencion))}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
                       {formatCLP(calcularPagoProfesional(atencion))}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        atencion.pagado ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {atencion.pagado ? 'Pagado' : 'Pendiente'}
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getReporteEstadoClass(atencion)}`}>
+                        {getReporteEstadoLabel(atencion)}
                       </span>
                     </td>
                   </tr>

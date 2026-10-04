@@ -2,6 +2,8 @@ import jsPDF from 'jspdf'
 import * as XLSX from 'xlsx'
 import { Atencion, Profesional, Costo } from '@/types/database'
 import { formatCLP } from './currency'
+import { getFinancialAmount, isBillableAtencion } from './financial'
+import { getEstadoCitaLabel } from './atencionEstado'
 
 export const exportToPDF = {
   monthlyReport: (data: {
@@ -119,7 +121,7 @@ export const exportToPDF = {
     doc.text('Resumen de Atenciones', 20, 115)
 
     const totalAppointments = appointments.length
-    const totalIncome = appointments.reduce((sum, app) => sum + (app.valor_cobrado || 0), 0)
+    const totalIncome = appointments.reduce((sum, app) => sum + getFinancialAmount(app), 0)
 
     doc.setFontSize(12)
     doc.text(`Total de Atenciones: ${totalAppointments}`, 20, 125)
@@ -132,10 +134,16 @@ export const exportToPDF = {
 
       let yPosition = 175
       appointments.forEach((appointment, index) => {
+        const billingStatus = !isBillableAtencion(appointment)
+          ? `${getEstadoCitaLabel(appointment.estado_cita)} - No cobrable`
+          : appointment.pagado
+            ? 'Pagado'
+            : 'Pendiente'
+
         doc.setFontSize(10)
         doc.text(`${index + 1}. ${new Date(appointment.fecha).toLocaleDateString()} - ${appointment.paciente_nombre || appointment.paciente?.nombre || 'Paciente'}`, 20, yPosition)
         doc.text(`   Servicio: ${appointment.tipos_atencion?.nombre || appointment.tipo_atencion_nombre || appointment.tipo_atencion}`, 20, yPosition + 6)
-        doc.text(`   Monto: ${formatCLP(appointment.monto || appointment.valor_cobrado || 0)}`, 20, yPosition + 12)
+        doc.text(`   Monto: ${formatCLP(getFinancialAmount(appointment))} · Estado: ${billingStatus}`, 20, yPosition + 12)
         yPosition += 20
 
         if (yPosition > 250) {
@@ -233,8 +241,10 @@ export const exportToExcel = {
         app.paciente_nombre || app.paciente?.nombre || 'Paciente',
         app.profesional_nombre || app.profesional?.nombre || 'Profesional',
         app.tipos_atencion?.nombre || app.tipo_atencion_nombre || app.tipo_atencion,
-        formatCLP(app.monto || app.valor_cobrado || 0),
-        app.estado || (app.pagado ? 'Pagado' : 'Pendiente')
+        formatCLP(getFinancialAmount(app)),
+        !isBillableAtencion(app)
+          ? `${getEstadoCitaLabel(app.estado_cita)} - No cobrable`
+          : app.estado || (app.pagado ? 'Pagado' : 'Pendiente')
       ])
     ]
 
@@ -331,8 +341,10 @@ export const exportToExcel = {
         new Date(app.fecha).toLocaleDateString(),
         app.paciente_nombre || app.paciente?.nombre || 'Paciente',
         app.tipo_atencion_nombre || app.tipo_atencion,
-        app.monto || app.valor_cobrado || 0,
-        app.estado || (app.pagado ? 'Pagado' : 'Pendiente')
+        getFinancialAmount(app),
+        !isBillableAtencion(app)
+          ? `${getEstadoCitaLabel(app.estado_cita)} - No cobrable`
+          : app.estado || (app.pagado ? 'Pagado' : 'Pendiente')
       ])
     ]
 
