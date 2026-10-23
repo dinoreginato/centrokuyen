@@ -348,6 +348,27 @@ export const pacientesService = {
     return data || []
   },
 
+  async getByRut(rut: string, sucursalId?: string, centroId?: string): Promise<Paciente | null> {
+    const normalizedRut = rut.trim()
+    if (!normalizedRut) return null
+
+    let query = supabase
+      .from('pacientes')
+      .select('*')
+      .eq('rut', normalizedRut)
+
+    query = applyCentroFilter(query, centroId)
+
+    if (sucursalId) {
+      query = query.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+    }
+
+    const { data, error } = await query.maybeSingle()
+
+    if (error) throw error
+    return data
+  },
+
   async getById(id: string): Promise<Paciente | null> {
     const { data, error } = await supabase
       .from('pacientes')

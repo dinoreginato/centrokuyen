@@ -71,21 +71,6 @@ const PacienteForm = () => {
       return
     }
 
-    // Validar RUT único
-    try {
-      const existingPacientes = await pacientesService.getAll(currentSucursal?.id, currentCentro?.id)
-      const rutExists = existingPacientes.some(p => 
-        p.rut === formData.rut && p.id !== id
-      )
-      
-      if (rutExists) {
-        toast.error('Ya existe un paciente con este RUT')
-        return
-      }
-    } catch (error) {
-      console.error('Error checking RUT:', error)
-    }
-
     try {
       setSaving(true)
 
@@ -105,6 +90,29 @@ const PacienteForm = () => {
         direccion: formData.direccion.trim(),
         notas: formData.notas.trim()
       }
+
+      const pacienteConMismoRut = await pacientesService.getByRut(
+        payload.rut,
+        sucursalId || undefined,
+        centroId || undefined
+      )
+
+      if (pacienteConMismoRut && pacienteConMismoRut.id !== id) {
+        if (pacienteConMismoRut.activo === false && !isEditing) {
+          await pacientesService.update(pacienteConMismoRut.id, {
+            ...payload,
+            activo: true,
+            centro_id: centroId,
+            sucursal_id: sucursalId
+          })
+          toast.success('Paciente reactivado exitosamente')
+          navigate('/pacientes')
+          return
+        }
+
+        toast.error('Ya existe un paciente con este RUT')
+        return
+      }
       
       if (isEditing) {
         await pacientesService.update(id!, payload)
@@ -121,9 +129,11 @@ const PacienteForm = () => {
       
       navigate('/pacientes')
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : `Error al ${isEditing ? 'actualizar' : 'crear'} el paciente`
+      const message = typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message?: unknown }).message || `Error al ${isEditing ? 'actualizar' : 'crear'} el paciente`)
+        : error instanceof Error
+          ? error.message
+          : `Error al ${isEditing ? 'actualizar' : 'crear'} el paciente`
       toast.error(message)
       console.error('Error saving paciente:', error)
     } finally {
