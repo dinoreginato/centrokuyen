@@ -8,7 +8,7 @@ import { pacientesService } from '@/utils/supabase'
 const PacienteForm = () => {
   const navigate = useNavigate()
   const { id } = useParams()
-  const { currentCentro, currentSucursal } = useSucursal()
+  const { currentCentro, currentSucursal, loading: loadingSucursal } = useSucursal()
   const isEditing = !!id
 
   const [formData, setFormData] = useState({
@@ -55,6 +55,11 @@ const PacienteForm = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!isEditing && loadingSucursal) {
+      toast.error('Todavía se está cargando el centro y la sucursal. Intenta nuevamente en unos segundos.')
+      return
+    }
     
     if (!formData.nombre.trim()) {
       toast.error('El nombre es requerido')
@@ -83,22 +88,43 @@ const PacienteForm = () => {
 
     try {
       setSaving(true)
+
+      const centroId = currentCentro?.id || currentSucursal?.centro_id || null
+      const sucursalId = currentSucursal?.id || null
+
+      if (!isEditing && !centroId) {
+        throw new Error('No se pudo determinar el centro actual para guardar el paciente')
+      }
+
+      const payload = {
+        nombre: formData.nombre.trim(),
+        rut: formData.rut.trim(),
+        fecha_nacimiento: formData.fecha_nacimiento || null,
+        telefono: formData.telefono.trim(),
+        email: formData.email.trim(),
+        direccion: formData.direccion.trim(),
+        notas: formData.notas.trim()
+      }
       
       if (isEditing) {
-        await pacientesService.update(id!, formData)
+        await pacientesService.update(id!, payload)
         toast.success('Paciente actualizado exitosamente')
       } else {
         await pacientesService.create({
-          ...formData,
-          centro_id: currentCentro?.id || currentSucursal?.centro_id || null,
-          sucursal_id: currentSucursal?.id
+          ...payload,
+          activo: true,
+          centro_id: centroId,
+          sucursal_id: sucursalId
         })
         toast.success('Paciente creado exitosamente')
       }
       
       navigate('/pacientes')
     } catch (error) {
-      toast.error(`Error al ${isEditing ? 'actualizar' : 'crear'} el paciente`)
+      const message = error instanceof Error
+        ? error.message
+        : `Error al ${isEditing ? 'actualizar' : 'crear'} el paciente`
+      toast.error(message)
       console.error('Error saving paciente:', error)
     } finally {
       setSaving(false)
@@ -113,7 +139,7 @@ const PacienteForm = () => {
     }))
   }
 
-  if (loading) {
+  if (loading || (!isEditing && loadingSucursal)) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-medical-green"></div>
@@ -251,7 +277,7 @@ const PacienteForm = () => {
           </button>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || (!isEditing && loadingSucursal)}
             className="bg-medical-green hover:bg-green-700 text-white px-4 py-2 rounded-md flex items-center space-x-2 disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
