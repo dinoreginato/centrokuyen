@@ -10,6 +10,7 @@ import { exportUtils } from '@/utils/export'
 import { formatCLP } from '@/utils/currency'
 import { getFinancialAmount, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
+import { calculateAtencionProfessionalPayment, getMonthlyBoxIncome, getProfesionalPaymentLabel, isMonthlyBoxProfessional } from '@/utils/professionalPayment'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 
@@ -17,6 +18,7 @@ interface AcumuladoMensual {
   month: number
   label: string
   ingresos: number
+  ingresosBoxes: number
   aportes: number
   costosOperacionales: number
   costoProfesionales: number
@@ -93,6 +95,7 @@ const Reportes = () => {
           month: index + 1,
           label: dateFormat(new Date(year, index, 1), 'MMM yyyy', { locale: es }),
           ingresos: item.ingresos_totales,
+          ingresosBoxes: item.ingresos_boxes_mensuales || 0,
           aportes: item.total_aportes,
           costosOperacionales: item.costos_operacionales,
           costoProfesionales: item.total_pagado_profesionales,
@@ -119,30 +122,8 @@ const Reportes = () => {
   }
 
   const calcularPagoProfesional = (atencion: Atencion) => {
-    if (!isBillableAtencion(atencion)) return 0
-
     const profesional = profesionales.find(p => p.id === atencion.profesional_id)
-    if (!profesional) return 0
-    
-    // 1. Buscar si hay comisión específica para este tipo de atención
-    const comisionEspecifica = comisiones.find(c => 
-      c.profesional_id === atencion.profesional_id && 
-      c.tipo_atencion_id === atencion.tipo_atencion
-    )
-
-    if (comisionEspecifica) {
-      const porcentaje = comisionEspecifica.porcentaje ?? 0
-      const montoFijo = comisionEspecifica.monto_fijo ?? 0
-      return ((atencion.valor_cobrado * porcentaje) / 100) + montoFijo
-    }
-
-    // 2. Si no hay específica, usar la general del profesional
-    if (profesional.porcentaje_pago > 0) {
-      return (atencion.valor_cobrado * profesional.porcentaje_pago) / 100
-    } else if (profesional.monto_fijo_pago > 0) {
-      return profesional.monto_fijo_pago
-    }
-    return 0
+    return calculateAtencionProfessionalPayment(atencion, profesional, comisiones)
   }
 
   const getReporteEstadoLabel = (atencion: Atencion) => {
@@ -164,7 +145,15 @@ const Reportes = () => {
   }
 
   const atencionesPorProfesional = useMemo(() => {
-    const atencionesPorProfesional: { [key: string]: { profesional: Profesional, atenciones: Atencion[], total: number, pagosPendientes: number } } = {}
+    const atencionesPorProfesional: {
+      [key: string]: {
+        profesional: Profesional
+        atenciones: Atencion[]
+        total: number
+        pagosPendientes: number
+        monthlyBoxCharge: number
+      }
+    } = {}
     
     atenciones.forEach(atencion => {
       const profesional = profesionales.find(p => p.id === atencion.profesional_id)
@@ -174,7 +163,8 @@ const Reportes = () => {
             profesional,
             atenciones: [],
             total: 0,
-            pagosPendientes: 0
+            pagosPendientes: 0,
+            monthlyBoxCharge: isMonthlyBoxProfessional(profesional) ? (profesional.monto_mensual_box || 0) : 0
           }
         }
         atencionesPorProfesional[profesional.id].atenciones.push(atencion)
@@ -229,34 +219,39 @@ const Reportes = () => {
 
   const resumenFinancieroGeneral = useMemo(() => {
     const ingresosAtenciones = reporteData?.ingresos_totales || 0
+    const ingresosBoxes = reporteData?.ingresos_boxes_mensuales ?? getMonthlyBoxIncome(profesionales)
     const aportes = reporteData?.total_aportes ?? totalAportesMes
     const costosOperacionales = reporteData?.costos_operacionales ?? costosOperacionalesMes
     const costoProfesionales = reporteData?.total_pagado_profesionales || 0
+    const costoProfesionalesSesiones = reporteData?.total_pagado_profesionales_sesiones ?? costoProfesionales
     const totalOperacion = reporteData?.total_operacion ?? (costosOperacionales + costoProfesionales)
-    const resultadoFinal = reporteData?.resultado_final ?? (ingresosAtenciones + aportes - totalOperacion)
+    const resultadoFinal = reporteData?.resultado_final ?? (ingresosAtenciones + ingresosBoxes + aportes - totalOperacion)
     const cuentasPorCobrar = reporteData?.saldo_pendiente ?? Math.max(ingresosAtenciones - (reporteData?.ingresos_cobrados || 0), 0)
 
     return {
       ingresosAtenciones,
+      ingresosBoxes,
       aportes,
-      ingresosConAportes: ingresosAtenciones + aportes,
+      ingresosConAportes: ingresosAtenciones + ingresosBoxes + aportes,
       costosOperacionales,
+      costoProfesionalesSesiones,
       costoProfesionales,
       totalOperacion,
       resultadoFinal,
       cuentasPorCobrar
     }
-  }, [costosOperacionalesMes, reporteData, totalAportesMes])
+  }, [costosOperacionalesMes, profesionales, reporteData, totalAportesMes])
 
   const professionalPayments = useMemo(() => {
-    return atencionesPorProfesional.map(({ profesional, atenciones, total, pagosPendientes }) => ({
+    return atencionesPorProfesional.map(({ profesional, atenciones, total, pagosPendientes, monthlyBoxCharge }) => ({
       professional: profesional.nombre,
       speciality: profesional.especialidad,
       appointments: atenciones.length,
       totalIncome: sumFinancialAmounts(atenciones),
       totalPayment: total,
       pendingPayment: pagosPendientes,
-      paymentType: profesional.porcentaje_pago > 0 ? `${profesional.porcentaje_pago}%` : formatCLP(profesional.monto_fijo_pago)
+      monthlyCharge: monthlyBoxCharge,
+      paymentType: getProfesionalPaymentLabel(profesional)
     }))
   }, [atencionesPorProfesional])
 
@@ -327,7 +322,9 @@ const Reportes = () => {
         const [year, month] = selectedMonth.split('-').map(Number)
         const monthName = dateFormat(new Date(year, month - 1), 'MMMM', { locale: es })
         const paymentSummary = atencionesPorProfesional.find(item => item.profesional.id === selectedProfesional)
-        const totalPayment = paymentSummary?.total || 0
+        const totalPayment = paymentSummary?.profesional && isMonthlyBoxProfessional(paymentSummary.profesional)
+          ? paymentSummary.monthlyBoxCharge
+          : paymentSummary?.total || 0
         
         if (format === 'pdf') {
           const { exportToPDF } = heavyExportModule!
@@ -387,6 +384,7 @@ const Reportes = () => {
             month: monthName,
             year: year,
             totalIncome: resumenFinancieroGeneral.ingresosAtenciones,
+            totalMonthlyBoxIncome: resumenFinancieroGeneral.ingresosBoxes,
             totalContributions: resumenFinancieroGeneral.aportes,
             totalIncomeWithContributions: resumenFinancieroGeneral.ingresosConAportes,
             totalOperationalCosts: resumenFinancieroGeneral.costosOperacionales,
@@ -404,6 +402,7 @@ const Reportes = () => {
             month: monthName,
             year: year,
             totalIncome: resumenFinancieroGeneral.ingresosAtenciones,
+            totalMonthlyBoxIncome: resumenFinancieroGeneral.ingresosBoxes,
             totalContributions: resumenFinancieroGeneral.aportes,
             totalIncomeWithContributions: resumenFinancieroGeneral.ingresosConAportes,
             totalOperationalCosts: resumenFinancieroGeneral.costosOperacionales,
@@ -535,9 +534,24 @@ const Reportes = () => {
                 </div>
                 <div className="text-right">
                   <p className="text-2xl font-bold text-blue-800">
-                    {formatCLP(atencionesPorProfesional.find(item => item.profesional.id === selectedProfesional)?.total || 0)}
+                    {formatCLP(
+                      (() => {
+                        const selectedSummary = atencionesPorProfesional.find(item => item.profesional.id === selectedProfesional)
+                        if (!selectedSummary) return 0
+                        return isMonthlyBoxProfessional(selectedSummary.profesional)
+                          ? selectedSummary.monthlyBoxCharge
+                          : selectedSummary.total
+                      })()
+                    )}
                   </p>
-                  <p className="text-blue-600 text-sm">Total a pagar</p>
+                  <p className="text-blue-600 text-sm">
+                    {(() => {
+                      const selectedSummary = atencionesPorProfesional.find(item => item.profesional.id === selectedProfesional)
+                      return selectedSummary && isMonthlyBoxProfessional(selectedSummary.profesional)
+                        ? 'Cobro mensual del box'
+                        : 'Total a pagar'
+                    })()}
+                  </p>
                 </div>
               </div>
             </div>
@@ -573,7 +587,19 @@ const Reportes = () => {
                 <div className="rounded-lg bg-white p-6 shadow-md">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Ingresos + aportes</p>
+                      <p className="text-sm font-medium text-gray-600">Ingresos por boxes</p>
+                      <p className="text-3xl font-bold text-indigo-600">{formatCLP(resumenFinancieroGeneral.ingresosBoxes)}</p>
+                    </div>
+                    <div className="rounded-full bg-indigo-600 p-3 text-white">
+                      <Users className="h-6 w-6" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-white p-6 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Ingresos + box + aportes</p>
                       <p className="text-3xl font-bold text-blue-600">{formatCLP(resumenFinancieroGeneral.ingresosConAportes)}</p>
                     </div>
                     <div className="rounded-full bg-blue-600 p-3 text-white">
@@ -597,7 +623,7 @@ const Reportes = () => {
                 <div className="rounded-lg bg-white p-6 shadow-md">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Costo de profesionales</p>
+                      <p className="text-sm font-medium text-gray-600">Costo profesionales por sesión</p>
                       <p className="text-3xl font-bold text-orange-600">{formatCLP(resumenFinancieroGeneral.costoProfesionales)}</p>
                     </div>
                     <div className="rounded-full bg-orange-600 p-3 text-white">
@@ -639,6 +665,13 @@ const Reportes = () => {
                       </div>
                       <span className="font-semibold text-cyan-700">+ {formatCLP(resumenFinancieroGeneral.aportes)}</span>
                     </div>
+                    <div className="flex items-center justify-between rounded-lg bg-indigo-50 px-4 py-3">
+                      <div>
+                        <p className="font-medium text-gray-700">Cobro mensual por box</p>
+                        <p className="text-xs text-gray-500">Ingreso fijo por profesionales que ocupan habitación o box</p>
+                      </div>
+                      <span className="font-semibold text-indigo-700">+ {formatCLP(resumenFinancieroGeneral.ingresosBoxes)}</span>
+                    </div>
                     <div className="flex items-center justify-between rounded-lg bg-red-50 px-4 py-3">
                       <div>
                         <p className="font-medium text-gray-700">Costos operacionales</p>
@@ -648,10 +681,10 @@ const Reportes = () => {
                     </div>
                     <div className="flex items-center justify-between rounded-lg bg-orange-50 px-4 py-3">
                       <div>
-                        <p className="font-medium text-gray-700">Costo de profesionales</p>
-                        <p className="text-xs text-gray-500">Monto a pagar por sesiones realizadas</p>
+                        <p className="font-medium text-gray-700">Costo de profesionales por sesión</p>
+                        <p className="text-xs text-gray-500">Monto a pagar por sesiones realizadas bajo modalidad por atención</p>
                       </div>
-                      <span className="font-semibold text-orange-700">- {formatCLP(resumenFinancieroGeneral.costoProfesionales)}</span>
+                      <span className="font-semibold text-orange-700">- {formatCLP(resumenFinancieroGeneral.costoProfesionalesSesiones)}</span>
                     </div>
                     <div className="grid gap-3 border-t border-gray-200 pt-4 md:grid-cols-2">
                       <div className="rounded-lg bg-blue-50 px-4 py-3">
@@ -837,6 +870,7 @@ const Reportes = () => {
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Mes</th>
                           <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Ingresos</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Boxes</th>
                           <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Aportes</th>
                           <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Costos operacionales</th>
                           <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Profesionales</th>
@@ -851,6 +885,7 @@ const Reportes = () => {
                           <tr key={item.month}>
                             <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.label}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{formatCLP(item.ingresos)}</td>
+                            <td className="px-4 py-3 text-sm text-indigo-700">{formatCLP(item.ingresosBoxes)}</td>
                             <td className="px-4 py-3 text-sm text-cyan-700">{formatCLP(item.aportes)}</td>
                             <td className="px-4 py-3 text-sm text-red-700">{formatCLP(item.costosOperacionales)}</td>
                             <td className="px-4 py-3 text-sm text-orange-700">{formatCLP(item.costoProfesionales)}</td>
@@ -979,25 +1014,32 @@ const Reportes = () => {
           />
         ) : (
           <div className="space-y-4">
-            {atencionesPorProfesional.map(({ profesional, atenciones, total, pagosPendientes }) => (
+            {atencionesPorProfesional.map(({ profesional, atenciones, total, pagosPendientes, monthlyBoxCharge }) => (
               <div key={profesional.id} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <h3 className="font-semibold text-gray-800">{profesional.nombre}</h3>
                     <p className="text-sm text-gray-600">{profesional.especialidad}</p>
                     <p className="text-sm text-gray-500">
-                      {atenciones.length} atenciones - Pago: {profesional.porcentaje_pago > 0 ? `${profesional.porcentaje_pago}%` : `$${profesional.monto_fijo_pago}`}
+                      {atenciones.length} atenciones - {isMonthlyBoxProfessional(profesional) ? 'Modelo:' : 'Pago:'} {getProfesionalPaymentLabel(profesional)}
                     </p>
-                    {pagosPendientes > 0 && (
+                    {profesional.box?.nombre && (
+                      <p className="text-xs text-gray-500 mt-1">Box: {profesional.box.nombre}</p>
+                    )}
+                    {!isMonthlyBoxProfessional(profesional) && pagosPendientes > 0 && (
                       <p className="text-sm text-orange-600 font-medium">
                         {formatCLP(pagosPendientes)} en pagos pendientes
                       </p>
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-bold text-green-600">{formatCLP(total)}</p>
-                    <p className="text-sm text-gray-500">Total a pagar</p>
-                    {pagosPendientes > 0 && (
+                    <p className="text-lg font-bold text-green-600">
+                      {formatCLP(isMonthlyBoxProfessional(profesional) ? monthlyBoxCharge : total)}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {isMonthlyBoxProfessional(profesional) ? 'Cobro mensual box' : 'Total a pagar'}
+                    </p>
+                    {!isMonthlyBoxProfessional(profesional) && pagosPendientes > 0 && (
                       <p className="text-sm text-orange-600 font-medium">
                         {formatCLP(pagosPendientes)} pendiente
                       </p>
@@ -1016,9 +1058,13 @@ const Reportes = () => {
                       </div>
                       <div className="text-right">
                         <span className="font-medium">{formatCLP(getFinancialAmount(atencion))}</span>
-                        <span className="text-green-600 ml-2">
-                          ({formatCLP(calcularPagoProfesional(atencion))})
-                        </span>
+                        {isMonthlyBoxProfessional(profesional) ? (
+                          <span className="text-indigo-600 ml-2">Sin pago por sesión</span>
+                        ) : (
+                          <span className="text-green-600 ml-2">
+                            ({formatCLP(calcularPagoProfesional(atencion))})
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}

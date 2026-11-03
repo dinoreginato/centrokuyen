@@ -3,8 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Save, X, Plus, Trash2, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
-import { profesionalesService, tiposAtencionService, profesionalComisionesService, profesionalDisponibilidadService } from '@/utils/supabase'
-import { TipoAtencion, ProfesionalComision, ProfesionalDisponibilidad } from '@/types/database'
+import { profesionalesService, tiposAtencionService, profesionalComisionesService, profesionalDisponibilidadService, boxesService } from '@/utils/supabase'
+import { Box, TipoAtencion, ProfesionalComision, ProfesionalDisponibilidad, TipoPagoProfesional } from '@/types/database'
 import PageLoader from '@/components/ui/PageLoader'
 
 type DisponibilidadFormRow = {
@@ -57,8 +57,11 @@ const ProfesionalForm = () => {
     especialidad: '',
     email: '',
     telefono: '',
+    tipo_pago_base: 'porcentaje' as TipoPagoProfesional,
     porcentaje_pago: 70,
     monto_fijo_pago: 0,
+    monto_mensual_box: 0,
+    box_id: '',
     activo: true
   })
 
@@ -66,6 +69,7 @@ const ProfesionalForm = () => {
   const [saving, setSaving] = useState(false)
   
   const [tiposAtencion, setTiposAtencion] = useState<TipoAtencion[]>([])
+  const [boxes, setBoxes] = useState<Box[]>([])
   const [comisiones, setComisiones] = useState<ProfesionalComision[]>([])
   const [newComision, setNewComision] = useState({ tipo_atencion_id: '', porcentaje: '' })
   const [disponibilidad, setDisponibilidad] = useState<DisponibilidadFormRow[]>(buildInitialDisponibilidad())
@@ -82,8 +86,12 @@ const ProfesionalForm = () => {
 
   const loadTiposAtencion = async () => {
     try {
-      const data = await tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id)
-      setTiposAtencion(data)
+      const [tiposData, boxesData] = await Promise.all([
+        tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id),
+        boxesService.getAll(currentSucursal?.id, currentCentro?.id)
+      ])
+      setTiposAtencion(tiposData)
+      setBoxes(boxesData)
     } catch (error) {
       console.error('Error cargando tipos de atención:', error)
     }
@@ -92,15 +100,17 @@ const ProfesionalForm = () => {
   const loadProfesional = async () => {
     try {
       setLoading(true)
-      const [profesional, tiposData, comisionesData, disponibilidadData] = await Promise.all([
+      const [profesional, tiposData, comisionesData, disponibilidadData, boxesData] = await Promise.all([
         profesionalesService.getById(id!),
         tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id),
         profesionalComisionesService.getAll(id!),
-        profesionalDisponibilidadService.getByProfesional(id!, currentSucursal?.id)
+        profesionalDisponibilidadService.getByProfesional(id!, currentSucursal?.id),
+        boxesService.getAll(currentSucursal?.id, currentCentro?.id)
       ])
       
       setTiposAtencion(tiposData)
       setComisiones(comisionesData)
+      setBoxes(boxesData)
 
       if (profesional) {
         setProfesionalSucursalId(profesional.sucursal_id || currentSucursal?.id || null)
@@ -109,8 +119,11 @@ const ProfesionalForm = () => {
           especialidad: profesional.especialidad,
           email: profesional.email || '',
           telefono: profesional.telefono || '',
+          tipo_pago_base: profesional.tipo_pago_base || ((profesional.monto_fijo_pago || 0) > 0 ? 'monto_fijo' : 'porcentaje'),
           porcentaje_pago: profesional.porcentaje_pago,
           monto_fijo_pago: profesional.monto_fijo_pago,
+          monto_mensual_box: profesional.monto_mensual_box || 0,
+          box_id: profesional.box_id || '',
           activo: profesional.activo
         })
         setDisponibilidad(mapDisponibilidadToForm(disponibilidadData))
@@ -176,6 +189,18 @@ const ProfesionalForm = () => {
       return
     }
 
+    if (formData.tipo_pago_base === 'mensual_box') {
+      if (formData.monto_mensual_box <= 0) {
+        toast.error('Debes indicar el cobro mensual del box')
+        return
+      }
+
+      if (!formData.box_id) {
+        toast.error('Debes asignar un box principal para el cobro mensual')
+        return
+      }
+    }
+
     try {
       setSaving(true)
       
@@ -184,6 +209,10 @@ const ProfesionalForm = () => {
       
       const profesionalData = {
         ...formData,
+        porcentaje_pago: formData.tipo_pago_base === 'porcentaje' ? formData.porcentaje_pago : 0,
+        monto_fijo_pago: formData.tipo_pago_base === 'monto_fijo' ? formData.monto_fijo_pago : 0,
+        monto_mensual_box: formData.tipo_pago_base === 'mensual_box' ? formData.monto_mensual_box : 0,
+        box_id: formData.box_id || null,
         email: email === '' ? null : email,
         telefono: telefono === '' ? null : telefono,
         centro_id: currentCentro?.id || currentSucursal?.centro_id || null,
@@ -357,48 +386,130 @@ const ProfesionalForm = () => {
         </div>
 
         <div className="border-t border-gray-200 pt-6">
-          <h3 className="text-lg font-medium text-gray-800 mb-4">Configuración de Pago</h3>
+          <h3 className="text-lg font-medium text-gray-800 mb-4">Modelo Económico</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label htmlFor="porcentaje_pago" className="block text-sm font-medium text-gray-700 mb-2">
-                Porcentaje de pago (%)
+              <label htmlFor="tipo_pago_base" className="block text-sm font-medium text-gray-700 mb-2">
+                Tipo de modelo
               </label>
-              <input
-                type="number"
-                id="porcentaje_pago"
-                name="porcentaje_pago"
-                value={formData.porcentaje_pago}
+              <select
+                id="tipo_pago_base"
+                name="tipo_pago_base"
+                value={formData.tipo_pago_base}
                 onChange={handleChange}
-                min="0"
-                max="100"
-                step="0.01"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-              />
+              >
+                <option value="porcentaje">Porcentaje por atención</option>
+                <option value="monto_fijo">Monto fijo por atención</option>
+                <option value="mensual_box">Cobro mensual por box</option>
+              </select>
               <p className="text-sm text-gray-500 mt-1">
-                Porcentaje que el profesional recibe por cada atención
+                Define si el cálculo se hace por sesión o por ocupación mensual de un box.
               </p>
             </div>
 
             <div>
-              <label htmlFor="monto_fijo_pago" className="block text-sm font-medium text-gray-700 mb-2">
-                Monto fijo de pago ($)
+              <label htmlFor="box_id" className="block text-sm font-medium text-gray-700 mb-2">
+                Box principal
               </label>
-              <input
-                type="number"
-                id="monto_fijo_pago"
-                name="monto_fijo_pago"
-                value={formData.monto_fijo_pago}
+              <select
+                id="box_id"
+                name="box_id"
+                value={formData.box_id}
                 onChange={handleChange}
-                min="0"
-                step="0.01"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
-              />
+              >
+                <option value="">Sin box asignado</option>
+                {boxes.map((box) => (
+                  <option key={box.id} value={box.id}>
+                    {box.nombre}
+                  </option>
+                ))}
+              </select>
               <p className="text-sm text-gray-500 mt-1">
-                Monto fijo que el profesional recibe por cada atención
+                Se propondrá por defecto en la agenda y es obligatorio cuando el cobro es mensual por box.
               </p>
             </div>
           </div>
+
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {formData.tipo_pago_base === 'porcentaje' && (
+              <div>
+                <label htmlFor="porcentaje_pago" className="block text-sm font-medium text-gray-700 mb-2">
+                  Porcentaje de pago (%)
+                </label>
+                <input
+                  type="number"
+                  id="porcentaje_pago"
+                  name="porcentaje_pago"
+                  value={formData.porcentaje_pago}
+                  onChange={handleChange}
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  Porcentaje que el profesional recibe por cada atención.
+                </p>
+              </div>
+            )}
+
+            {formData.tipo_pago_base === 'monto_fijo' && (
+              <div>
+                <label htmlFor="monto_fijo_pago" className="block text-sm font-medium text-gray-700 mb-2">
+                  Monto fijo de pago ($)
+                </label>
+                <input
+                  type="number"
+                  id="monto_fijo_pago"
+                  name="monto_fijo_pago"
+                  value={formData.monto_fijo_pago}
+                  onChange={handleChange}
+                  min="0"
+                  step="0.01"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  Monto fijo que el profesional recibe por cada atención.
+                </p>
+              </div>
+            )}
+
+            {formData.tipo_pago_base === 'mensual_box' && (
+              <div>
+                <label htmlFor="monto_mensual_box" className="block text-sm font-medium text-gray-700 mb-2">
+                  Cobro mensual del box ($)
+                </label>
+                <input
+                  type="number"
+                  id="monto_mensual_box"
+                  name="monto_mensual_box"
+                  value={formData.monto_mensual_box}
+                  onChange={handleChange}
+                  min="0"
+                  step="0.01"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  Se reporta como ingreso mensual por uso del espacio y no como pago por sesión.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {formData.tipo_pago_base === 'mensual_box' && (
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+              Las atenciones seguirán apareciendo en agenda, pero el reporte financiero separará este profesional como <strong>mensual por box</strong> en vez de calcular un pago por cada sesión.
+            </div>
+          )}
+
+          {boxes.length === 0 && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Aún no hay boxes creados para esta sucursal. Puedes agregarlos desde <strong>Configuración</strong>.
+            </div>
+          )}
         </div>
 
         <div className="border-t border-gray-200 pt-6">
@@ -467,6 +578,8 @@ const ProfesionalForm = () => {
           
           {!isEditing ? (
             <p className="text-sm text-gray-500 italic">Guarde el profesional primero para configurar excepciones específicas.</p>
+          ) : formData.tipo_pago_base === 'mensual_box' ? (
+            <p className="text-sm text-gray-500 italic">Las comisiones por tipo no se aplican cuando el profesional trabaja con cobro mensual por box.</p>
           ) : (
             <div className="space-y-4">
               <div className="flex gap-4 items-end">

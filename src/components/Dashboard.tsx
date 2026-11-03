@@ -10,6 +10,7 @@ import { es } from 'date-fns/locale'
 import DashboardCharts from './DashboardCharts'
 import { autoNotificationService, notificationService } from '@/utils/notifications'
 import { formatCLP } from '@/utils/currency'
+import { calculateAtencionProfessionalPayment, getMonthlyBoxIncome } from '@/utils/professionalPayment'
 import { hasPermission } from '@/utils/permissions'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
@@ -176,11 +177,7 @@ const Dashboard = () => {
 
           const calcularGananciaProfesional = (atencionesPagadas: typeof filteredAtenciones) => {
             return atencionesPagadas.reduce((total, atencion) => {
-            const comisionEspecifica = comisiones.find(c => c.tipo_atencion_id === atencion.tipo_atencion)
-            const porcentaje = comisionEspecifica?.porcentaje ?? profesionalActual.porcentaje_pago ?? 0
-            const montoFijo = comisionEspecifica?.monto_fijo ?? profesionalActual.monto_fijo_pago ?? 0
-            const pagoPorcentaje = (atencion.valor_cobrado * porcentaje) / 100
-            return total + pagoPorcentaje + montoFijo
+              return total + calculateAtencionProfessionalPayment(atencion, profesionalActual, comisiones)
             }, 0)
           }
 
@@ -189,7 +186,7 @@ const Dashboard = () => {
         }
       } else {
         // Para admin, sumamos el total cobrado de las atenciones pagadas
-        ingresosMes = atencionesPagadasMes.reduce((total, atencion) => total + atencion.valor_cobrado, 0)
+        ingresosMes = atencionesPagadasMes.reduce((total, atencion) => total + atencion.valor_cobrado, 0) + getMonthlyBoxIncome(profesionales)
         gananciasAcumuladas = ingresosMes
       }
 
@@ -234,7 +231,7 @@ const Dashboard = () => {
   const canViewFinancialMetrics = hasPermission(user, 'viewFinancialMetrics')
   const professionalIncomeTitle = 'Mis Ganancias del Mes'
   const professionalIncomeValue = stats.ingresosMes
-  const professionalIncomeSubtitle = 'Total cobrado del mes'
+  const professionalIncomeSubtitle = 'Total del mes según tu modalidad'
 
   return (
     <div className="space-y-6">
@@ -380,6 +377,9 @@ const Dashboard = () => {
                     <p className="text-sm text-gray-500">
                       {dateFormat(parseISO(atencion.fecha), 'dd/MM/yyyy')} a las {atencion.hora}
                     </p>
+                    {atencion.box?.nombre && (
+                      <p className="text-xs text-gray-500">Box: {atencion.box.nombre}</p>
+                    )}
                   </div>
                 </div>
                 <span className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold ${

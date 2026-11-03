@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { Profesional } from '@/types/database'
 import { profesionalesService } from '@/utils/supabase'
-import { formatCLP } from '@/utils/currency'
+import { getProfesionalPaymentLabel } from '@/utils/professionalPayment'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -156,12 +156,9 @@ const ProfesionalesList = () => {
                 <div className="mt-3 pt-3 border-t border-gray-200">
                   <div className="text-sm">
                     <p className="text-gray-600">Configuración de pago:</p>
-                    {profesional.porcentaje_pago > 0 ? (
-                      <p className="font-medium text-green-600">{profesional.porcentaje_pago}% por atención</p>
-                    ) : profesional.monto_fijo_pago > 0 ? (
-                      <p className="font-medium text-green-600">{formatCLP(profesional.monto_fijo_pago)} fijo por atención</p>
-                    ) : (
-                      <p className="text-gray-500">Sin configuración de pago</p>
+                    <p className="font-medium text-green-600">{getProfesionalPaymentLabel(profesional)}</p>
+                    {profesional.box?.nombre && (
+                      <p className="mt-1 text-xs text-gray-500">Box principal: {profesional.box.nombre}</p>
                     )}
                   </div>
                 </div>

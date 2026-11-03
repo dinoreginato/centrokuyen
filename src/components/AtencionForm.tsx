@@ -5,10 +5,11 @@ import { addWeeks, eachDayOfInterval, format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { Profesional, Paciente, TipoAtencion, Atencion, ProfesionalDisponibilidad } from '@/types/database'
-import { atencionesService, profesionalDisponibilidadService, profesionalesService, pacientesService, tiposAtencionService } from '@/utils/supabase'
+import { Box, Profesional, Paciente, TipoAtencion, Atencion, ProfesionalDisponibilidad } from '@/types/database'
+import { atencionesService, profesionalDisponibilidadService, profesionalesService, pacientesService, tiposAtencionService, boxesService } from '@/utils/supabase'
 import { ESTADO_CITA_OPTIONS, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { BLOQUEO_OPTIONS, buildBloqueoSlots, generateBloqueoTimeOptions, getBloqueoLabel, getNextBloqueoTime, getSuggestedBloqueoRange } from '@/utils/bloqueos'
+import { isMonthlyBoxProfessional } from '@/utils/professionalPayment'
 import { hasPermission } from '@/utils/permissions'
 import PageLoader from '@/components/ui/PageLoader'
 
@@ -50,6 +51,7 @@ type AtencionFormData = {
   fecha: string
   hora: string
   tipo_atencion: string
+  box_id: string
   valor_cobrado: number
   pagado: boolean
   numero_boleta: string
@@ -81,6 +83,7 @@ const AtencionForm = () => {
   const [profesionales, setProfesionales] = useState<Profesional[]>([])
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [tiposAtencion, setTiposAtencion] = useState<TipoAtencion[]>([])
+  const [boxes, setBoxes] = useState<Box[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [bloqueoDisponibilidad, setBloqueoDisponibilidad] = useState<ProfesionalDisponibilidad[]>([])
@@ -91,6 +94,7 @@ const AtencionForm = () => {
     fecha: '',
     hora: '',
     tipo_atencion: '',
+    box_id: '',
     valor_cobrado: 0,
     pagado: false,
     numero_boleta: '',
@@ -232,23 +236,30 @@ const AtencionForm = () => {
   const loadInitialData = async () => {
     try {
       setLoading(true)
-      const [profesionalesData, pacientesData, tiposData] = await Promise.all([
+      const [profesionalesData, pacientesData, tiposData, boxesData] = await Promise.all([
         profesionalesService.getAll(currentSucursal?.id, currentCentro?.id),
         pacientesService.getAll(currentSucursal?.id, currentCentro?.id),
-        tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id)
+        tiposAtencionService.getAll(currentSucursal?.id, currentCentro?.id),
+        boxesService.getAll(currentSucursal?.id, currentCentro?.id)
       ])
 
       let filteredProfesionales = profesionalesData
       if (!canSelectAnyProfessional && user?.profesional_id) {
         filteredProfesionales = profesionalesData.filter(p => p.id === user.profesional_id)
         if (!isEditing) {
-          setFormData(prev => ({ ...prev, profesional_id: user.profesional_id! }))
+          const profesionalActual = filteredProfesionales[0]
+          setFormData(prev => ({
+            ...prev,
+            profesional_id: user.profesional_id!,
+            box_id: profesionalActual?.box_id || prev.box_id
+          }))
         }
       }
 
       setProfesionales(filteredProfesionales)
       setPacientes(pacientesData)
       setTiposAtencion(tiposData)
+      setBoxes(boxesData)
     } catch (error) {
       toast.error('Error al cargar datos iniciales')
       console.error('Error loading initial data:', error)
@@ -270,6 +281,7 @@ const AtencionForm = () => {
         fecha: atencion.fecha,
         hora: horaBase,
         tipo_atencion: atencion.tipo_atencion || '',
+        box_id: atencion.box_id || '',
         valor_cobrado: atencion.valor_cobrado,
         pagado: atencion.pagado,
         numero_boleta: atencion.numero_boleta || '',
@@ -350,6 +362,16 @@ const AtencionForm = () => {
     }
   }
 
+  const handleProfessionalChange = (profesionalId: string) => {
+    const profesional = profesionales.find((item) => item.id === profesionalId)
+
+    setFormData((prev) => ({
+      ...prev,
+      profesional_id: profesionalId,
+      box_id: profesional?.box_id || prev.box_id
+    }))
+  }
+
   const handleTipoAtencionChange = (tipoId: string) => {
     const tipo = tiposAtencion.find(t => t.id === tipoId)
     setFormData(prev => ({
@@ -364,6 +386,12 @@ const AtencionForm = () => {
 
     if (!formData.profesional_id) {
       toast.error('Debe seleccionar un profesional')
+      return
+    }
+
+    const profesionalSeleccionado = profesionales.find((item) => item.id === formData.profesional_id)
+    if (profesionalSeleccionado && isMonthlyBoxProfessional(profesionalSeleccionado) && !formData.box_id) {
+      toast.error('Este profesional requiere un box asignado para la agenda')
       return
     }
 
@@ -638,7 +666,7 @@ const AtencionForm = () => {
                 id="profesional_id"
                 name="profesional_id"
                 value={formData.profesional_id}
-                onChange={handleChange}
+                onChange={(e) => handleProfessionalChange(e.target.value)}
                 className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue disabled:bg-gray-100 disabled:cursor-not-allowed"
                 required
                 disabled={!canSelectAnyProfessional}
@@ -731,6 +759,29 @@ const AtencionForm = () => {
                 required
               />
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="box_id" className="block text-sm font-medium text-gray-700 mb-2">
+              Box / Habitación
+            </label>
+            <select
+              id="box_id"
+              name="box_id"
+              value={formData.box_id}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-medical-blue focus:border-medical-blue"
+            >
+              <option value="">Sin box asignado</option>
+              {boxes.map((box) => (
+                <option key={box.id} value={box.id}>
+                  {box.nombre}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Ayuda a ordenar la agenda física y evita choques de la misma habitación en el mismo horario.
+            </p>
           </div>
 
           <div>
@@ -943,6 +994,17 @@ const AtencionForm = () => {
               Esta cita no se considerará activa para cobros ni seguimientos mientras esté marcada como <strong>{getEstadoCitaLabel(formData.estado_cita)}</strong>.
             </div>
           )}
+
+          {!!formData.profesional_id && (() => {
+            const profesionalSeleccionado = profesionales.find((item) => item.id === formData.profesional_id)
+            if (!profesionalSeleccionado || !isMonthlyBoxProfessional(profesionalSeleccionado)) return null
+
+            return (
+              <div className="md:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                Este profesional trabaja con <strong>cobro mensual por box</strong>. La cita se agenda normalmente, pero el reporte financiero no calculará un pago profesional por esta sesión y usará el box mensual configurado.
+              </div>
+            )
+          })()}
         </div>
 
         <div>

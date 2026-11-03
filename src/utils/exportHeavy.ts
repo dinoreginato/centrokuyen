@@ -4,6 +4,7 @@ import { Atencion, Profesional, Costo } from '@/types/database'
 import { formatCLP } from './currency'
 import { getFinancialAmount, isBillableAtencion } from './financial'
 import { getEstadoCitaLabel } from './atencionEstado'
+import { getProfesionalPaymentLabel, isMonthlyBoxProfessional } from './professionalPayment'
 
 export const exportToPDF = {
   monthlyReport: (data: {
@@ -11,6 +12,7 @@ export const exportToPDF = {
     month: string
     year: number
     totalIncome: number
+    totalMonthlyBoxIncome?: number
     totalContributions: number
     totalIncomeWithContributions: number
     totalOperationalCosts: number
@@ -47,18 +49,19 @@ export const exportToPDF = {
 
     doc.setFontSize(12)
     doc.text(`Ingresos por atenciones: ${formatCLP(data.totalIncome)}`, 20, 75)
-    doc.text(`Aportes: ${formatCLP(data.totalContributions)}`, 20, 85)
-    doc.text(`Ingresos + aportes: ${formatCLP(data.totalIncomeWithContributions)}`, 20, 95)
-    doc.text(`Costos operacionales: ${formatCLP(data.totalOperationalCosts)}`, 20, 105)
-    doc.text(`Costo profesionales: ${formatCLP(data.totalProfessionalCosts)}`, 20, 115)
-    doc.text(`Costo total operación: ${formatCLP(data.totalOperation)}`, 20, 125)
-    doc.text(`Cuentas por cobrar: ${formatCLP(data.totalPendingReceivables)}`, 20, 135)
-    doc.text(`Resultado final: ${formatCLP(data.totalProfit)}`, 20, 145)
+    doc.text(`Ingresos mensuales por box: ${formatCLP(data.totalMonthlyBoxIncome || 0)}`, 20, 85)
+    doc.text(`Aportes: ${formatCLP(data.totalContributions)}`, 20, 95)
+    doc.text(`Ingresos + box + aportes: ${formatCLP(data.totalIncomeWithContributions)}`, 20, 105)
+    doc.text(`Costos operacionales: ${formatCLP(data.totalOperationalCosts)}`, 20, 115)
+    doc.text(`Costo profesionales por sesión: ${formatCLP(data.totalProfessionalCosts)}`, 20, 125)
+    doc.text(`Costo total operación: ${formatCLP(data.totalOperation)}`, 20, 135)
+    doc.text(`Cuentas por cobrar: ${formatCLP(data.totalPendingReceivables)}`, 20, 145)
+    doc.text(`Resultado final: ${formatCLP(data.totalProfit)}`, 20, 155)
 
     doc.setFontSize(16)
-    doc.text('Pagos a Profesionales', 20, 165)
+    doc.text('Resumen por Profesionales', 20, 175)
 
-    let yPosition = 175
+    let yPosition = 185
     data.professionalPayments.forEach((payment, index) => {
       doc.setFontSize(12)
       doc.text(`${index + 1}. ${payment.professional}`, 20, yPosition)
@@ -93,9 +96,6 @@ export const exportToPDF = {
   ) => {
     const doc = new jsPDF()
 
-    const tipoPago = professional.porcentaje_pago > 0 ? 'porcentaje' : 'monto_fijo'
-    const valorPago = professional.porcentaje_pago > 0 ? professional.porcentaje_pago : professional.monto_fijo_pago
-
     doc.setFontSize(20)
     doc.text(`Reporte Profesional - ${professional.nombre}`, 105, 20, { align: 'center' })
 
@@ -109,12 +109,9 @@ export const exportToPDF = {
     doc.setFontSize(12)
     doc.text(`Nombre: ${professional.nombre}`, 20, 65)
     doc.text(`Especialidad: ${professional.especialidad}`, 20, 75)
-    doc.text(`Tipo de Pago: ${tipoPago === 'porcentaje' ? 'Porcentaje' : 'Monto Fijo'}`, 20, 85)
-
-    if (tipoPago === 'porcentaje') {
-      doc.text(`Porcentaje: ${valorPago}%`, 20, 95)
-    } else {
-      doc.text(`Monto Fijo: $${valorPago}`, 20, 95)
+    doc.text(`Modelo: ${getProfesionalPaymentLabel(professional)}`, 20, 85)
+    if (professional.box?.nombre) {
+      doc.text(`Box principal: ${professional.box.nombre}`, 20, 95)
     }
 
     doc.setFontSize(16)
@@ -126,7 +123,11 @@ export const exportToPDF = {
     doc.setFontSize(12)
     doc.text(`Total de Atenciones: ${totalAppointments}`, 20, 125)
     doc.text(`Ingresos Totales: ${formatCLP(totalIncome)}`, 20, 135)
-    doc.text(`Pago al Profesional: ${formatCLP(totalPayment)}`, 20, 145)
+    doc.text(
+      `${isMonthlyBoxProfessional(professional) ? 'Cobro mensual del box' : 'Pago al Profesional'}: ${formatCLP(totalPayment)}`,
+      20,
+      145
+    )
 
     if (appointments.length > 0) {
       doc.setFontSize(16)
@@ -166,6 +167,7 @@ export const exportToExcel = {
     month: string
     year: number
     totalIncome: number
+    totalMonthlyBoxIncome?: number
     totalContributions: number
     totalIncomeWithContributions: number
     totalOperationalCosts: number
@@ -209,10 +211,11 @@ export const exportToExcel = {
       ['', ''],
       ['RESUMEN FINANCIERO', ''],
       ['Ingresos por atenciones', formatCLP(data.totalIncome)],
+      ['Ingresos mensuales por box', formatCLP(data.totalMonthlyBoxIncome || 0)],
       ['Aportes', formatCLP(data.totalContributions)],
-      ['Ingresos + aportes', formatCLP(data.totalIncomeWithContributions)],
+      ['Ingresos + box + aportes', formatCLP(data.totalIncomeWithContributions)],
       ['Costos operacionales', formatCLP(data.totalOperationalCosts)],
-      ['Costo profesionales', formatCLP(data.totalProfessionalCosts)],
+      ['Costo profesionales por sesión', formatCLP(data.totalProfessionalCosts)],
       ['Costo total operación', formatCLP(data.totalOperation)],
       ['Cuentas por cobrar', formatCLP(data.totalPendingReceivables)],
       ['Resultado final', formatCLP(data.totalProfit)],
@@ -312,9 +315,6 @@ export const exportToExcel = {
   ) => {
     const wb = XLSX.utils.book_new()
 
-    const tipoPago = professional.porcentaje_pago > 0 ? 'porcentaje' : 'monto_fijo'
-    const valorPago = professional.porcentaje_pago > 0 ? professional.porcentaje_pago : professional.monto_fijo_pago
-
     const infoData = [
       ['REPORTE PROFESIONAL', ''],
       [centerName || 'Centro Médico', ''],
@@ -323,13 +323,13 @@ export const exportToExcel = {
       ['INFORMACIÓN DEL PROFESIONAL', ''],
       ['Nombre', professional.nombre],
       ['Especialidad', professional.especialidad],
-      ['Tipo de Pago', tipoPago === 'porcentaje' ? 'Porcentaje' : 'Monto Fijo'],
-      ['Valor', tipoPago === 'porcentaje' ? `${valorPago}%` : `$${valorPago}`],
+      ['Modelo', getProfesionalPaymentLabel(professional)],
+      ['Box principal', professional.box?.nombre || 'Sin box'],
       ['', ''],
       ['RESUMEN', ''],
       ['Total Atenciones', appointments.length],
       ['Ingresos Totales', appointments.reduce((sum, app) => sum + (app.valor_cobrado || 0), 0)],
-      ['Pago al Profesional', totalPayment]
+      [isMonthlyBoxProfessional(professional) ? 'Cobro mensual del box' : 'Pago al Profesional', totalPayment]
     ]
 
     const infoWs = XLSX.utils.aoa_to_sheet(infoData)

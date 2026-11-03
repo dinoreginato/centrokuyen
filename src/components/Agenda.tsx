@@ -245,7 +245,8 @@ Gracias 🙌🏻`
         normalizedSearch.length === 0 ||
         (atencion.paciente?.nombre || '').toLowerCase().includes(normalizedSearch) ||
         (atencion.profesional?.nombre || '').toLowerCase().includes(normalizedSearch) ||
-        (atencion.tipos_atencion?.nombre || atencion.tipo_atencion || '').toLowerCase().includes(normalizedSearch)
+        (atencion.tipos_atencion?.nombre || atencion.tipo_atencion || '').toLowerCase().includes(normalizedSearch) ||
+        (atencion.box?.nombre || '').toLowerCase().includes(normalizedSearch)
 
       return matchesEstado && matchesSearch
     })
@@ -327,6 +328,12 @@ Gracias 🙌🏻`
             ? 'Horario bloqueado'
             : atencion.tipos_atencion?.nombre || atencion.tipo_atencion}
         </div>
+
+        {atencion.box?.nombre && (
+          <div className={`text-gray-500 truncate mt-0.5 ${compact ? 'text-xs' : 'text-[10px]'}`}>
+            Box: {atencion.box.nombre}
+          </div>
+        )}
 
         <div className="mt-1">
           <span className={`inline-flex items-center rounded-full font-medium border ${getEstadoCitaBadgeClass(atencion.estado_cita)} ${compact ? 'px-2 py-0.5 text-xs' : 'px-2 py-0.5 text-[10px]'}`}>

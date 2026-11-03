@@ -1,5 +1,17 @@
 export type EstadoCita = 'por_confirmar' | 'confirmada' | 'cancelada' | 'reagendada'
 export type TipoBloqueo = 'almuerzo' | 'reunion' | 'vacaciones' | 'licencia' | 'capacitacion' | 'otro'
+export type TipoPagoProfesional = 'porcentaje' | 'monto_fijo' | 'mensual_box'
+
+export interface Box {
+  id: string
+  nombre: string
+  descripcion?: string | null
+  activo: boolean
+  centro_id: string
+  sucursal_id?: string | null
+  created_at: string
+  updated_at: string
+}
 
 export interface Centro {
   id: string
@@ -21,6 +33,9 @@ export interface Profesional {
   telefono: string | null
   porcentaje_pago: number
   monto_fijo_pago: number
+  tipo_pago_base?: TipoPagoProfesional
+  monto_mensual_box?: number | null
+  box_id?: string | null
   activo: boolean
   centro_id?: string | null
   sucursal_id?: string | null
@@ -28,8 +43,11 @@ export interface Profesional {
   updated_at: string
   
   // Campos calculados para notificaciones y exportación
-  tipo_pago?: 'porcentaje' | 'monto_fijo'
+  tipo_pago?: TipoPagoProfesional
   valor_pago?: number
+
+  // Relaciones
+  box?: Box
 }
 
 export interface ProfesionalDisponibilidad {
@@ -69,6 +87,7 @@ export interface Atencion {
   fecha: string
   hora: string
   tipo_atencion: string | null
+  box_id?: string | null
   valor_cobrado: number
   pagado: boolean
   estado_cita?: EstadoCita
@@ -94,6 +113,7 @@ export interface Atencion {
   profesional?: Profesional
   paciente?: Paciente
   tipos_atencion?: TipoAtencion
+  box?: Box
 }
 
 export interface PagoProfesional {
@@ -181,8 +201,10 @@ export interface ReporteMensual {
   mes: string
   total_atenciones: number
   ingresos_totales: number
+  ingresos_boxes_mensuales?: number
   ingresos_cobrados: number
   total_pagado_profesionales: number
+  total_pagado_profesionales_sesiones?: number
   total_aportes: number
   utilidad_neta: number
   resultado_final: number

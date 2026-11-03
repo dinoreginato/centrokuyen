@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { Save, Building, Phone, CreditCard, Users, Plus, CheckCircle2, Pencil, Trash2, History, RefreshCw, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSucursal } from '@/contexts/SucursalContext'
-import { auditService, centrosService } from '@/utils/supabase'
-import { AuditLog } from '@/types/database'
+import { auditService, boxesService, centrosService } from '@/utils/supabase'
+import { AuditLog, Box } from '@/types/database'
 import { formatCLP } from '@/utils/currency'
 import { applyAppUpdate, fetchRemoteAppVersion, formatAppVersionLabel, getCurrentAppVersion } from '@/utils/appVersion'
 import SucursalesList from './SucursalesList'
@@ -13,7 +13,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import PageLoader from '@/components/ui/PageLoader'
 
 const Configuracion = () => {
-  const { currentCentro, centros, setCentro } = useSucursal()
+  const { currentCentro, currentSucursal, centros, setCentro } = useSucursal()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -40,6 +40,15 @@ const Configuracion = () => {
     cuit: '',
     logo_url: ''
   })
+  const [boxes, setBoxes] = useState<Box[]>([])
+  const [loadingBoxes, setLoadingBoxes] = useState(false)
+  const [savingBox, setSavingBox] = useState(false)
+  const [boxToDelete, setBoxToDelete] = useState<Box | null>(null)
+  const [boxForm, setBoxForm] = useState({
+    id: '',
+    nombre: '',
+    descripcion: ''
+  })
 
   useEffect(() => {
     if (currentCentro) {
@@ -65,6 +74,14 @@ const Configuracion = () => {
   useEffect(() => {
     void loadVersionStatus()
   }, [])
+
+  useEffect(() => {
+    if (currentCentro) {
+      void loadBoxes()
+    } else {
+      setBoxes([])
+    }
+  }, [currentCentro, currentSucursal])
 
   const loadAuditLogs = async () => {
     try {
@@ -94,6 +111,19 @@ const Configuracion = () => {
       setLastVersionCheckAt(new Date().toISOString())
     } finally {
       setCheckingVersion(false)
+    }
+  }
+
+  const loadBoxes = async () => {
+    try {
+      setLoadingBoxes(true)
+      const data = await boxesService.getAll(currentSucursal?.id, currentCentro?.id)
+      setBoxes(data)
+    } catch (error) {
+      console.error('Error loading boxes:', error)
+      toast.error('No se pudieron cargar los boxes')
+    } finally {
+      setLoadingBoxes(false)
     }
   }
 
@@ -199,6 +229,89 @@ const Configuracion = () => {
       toast.error(message)
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleBoxFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setBoxForm((prev) => ({
+      ...prev,
+      [name]: value
+    }))
+  }
+
+  const resetBoxForm = () => {
+    setBoxForm({
+      id: '',
+      nombre: '',
+      descripcion: ''
+    })
+  }
+
+  const handleEditBox = (box: Box) => {
+    setBoxForm({
+      id: box.id,
+      nombre: box.nombre,
+      descripcion: box.descripcion || ''
+    })
+  }
+
+  const handleSaveBox = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!currentCentro?.id) {
+      toast.error('Debes seleccionar un centro antes de crear un box')
+      return
+    }
+
+    if (!boxForm.nombre.trim()) {
+      toast.error('El nombre del box es obligatorio')
+      return
+    }
+
+    try {
+      setSavingBox(true)
+
+      const payload = {
+        nombre: boxForm.nombre.trim(),
+        descripcion: boxForm.descripcion.trim() || null,
+        activo: true,
+        centro_id: currentCentro.id,
+        sucursal_id: currentSucursal?.id || null
+      }
+
+      if (boxForm.id) {
+        await boxesService.update(boxForm.id, payload)
+        toast.success('Box actualizado exitosamente')
+      } else {
+        await boxesService.create(payload)
+        toast.success('Box creado exitosamente')
+      }
+
+      resetBoxForm()
+      await loadBoxes()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo guardar el box'
+      toast.error(message)
+    } finally {
+      setSavingBox(false)
+    }
+  }
+
+  const handleDeleteBox = async () => {
+    if (!boxToDelete) return
+
+    try {
+      await boxesService.delete(boxToDelete.id)
+      toast.success('Box eliminado exitosamente')
+      setBoxToDelete(null)
+      if (boxForm.id === boxToDelete.id) {
+        resetBoxForm()
+      }
+      await loadBoxes()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo eliminar el box'
+      toast.error(message)
     }
   }
 
@@ -439,6 +552,8 @@ const Configuracion = () => {
         return 'Sucursal'
       case 'tipos_atencion':
         return 'Tipo de atención'
+      case 'boxes':
+        return 'Box'
       case 'profesional_comisiones':
         return 'Comisión profesional'
       default:
@@ -682,20 +797,128 @@ const Configuracion = () => {
           <h2 className="text-lg font-semibold text-gray-800">Configuración de Pagos</h2>
         </div>
         
-        <div className="bg-gray-50 rounded-lg p-4">
-          <p className="text-sm text-gray-600 mb-2">
-            Los pagos a profesionales se configuran individualmente en cada perfil de profesional.
-          </p>
-          <p className="text-sm text-gray-600">
-            Puedes establecer pagos por porcentaje (%) o monto fijo ($) por atención.
-          </p>
-          <Link
-            to="/profesionales"
-            className="inline-flex items-center mt-3 text-medical-blue hover:text-blue-700 text-sm font-medium"
-          >
-            <Users className="h-4 w-4 mr-1" />
-            Gestionar Profesionales
-          </Link>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">
+              Los modelos económicos de cada profesional se configuran en su ficha individual.
+            </p>
+            <p className="text-sm text-gray-600">
+              Puedes usar porcentaje por atención, monto fijo por atención o cobro mensual por box.
+            </p>
+            <Link
+              to="/profesionales"
+              className="inline-flex items-center mt-3 text-medical-blue hover:text-blue-700 text-sm font-medium"
+            >
+              <Users className="h-4 w-4 mr-1" />
+              Gestionar Profesionales
+            </Link>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-gray-800">Boxes / Habitaciones</h3>
+                <p className="text-sm text-gray-500">
+                  Se usan para asignar recursos físicos a la agenda y para el modelo mensual por box.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={resetBoxForm}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Nuevo box
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBox} className="mt-4 space-y-3">
+              <div>
+                <label htmlFor="box_nombre" className="mb-1 block text-sm font-medium text-gray-700">
+                  Nombre del box
+                </label>
+                <input
+                  id="box_nombre"
+                  name="nombre"
+                  type="text"
+                  value={boxForm.nombre}
+                  onChange={handleBoxFormChange}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-medical-blue focus:ring-medical-blue"
+                  placeholder="Ej: Box 1, Sala Norte, Terapia 2"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="box_descripcion" className="mb-1 block text-sm font-medium text-gray-700">
+                  Descripción
+                </label>
+                <textarea
+                  id="box_descripcion"
+                  name="descripcion"
+                  value={boxForm.descripcion}
+                  onChange={handleBoxFormChange}
+                  rows={2}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-medical-blue focus:ring-medical-blue"
+                  placeholder="Detalle opcional del espacio"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  disabled={savingBox}
+                  className="rounded-md bg-medical-blue px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {savingBox ? 'Guardando...' : boxForm.id ? 'Actualizar box' : 'Crear box'}
+                </button>
+                {boxForm.id && (
+                  <button
+                    type="button"
+                    onClick={resetBoxForm}
+                    className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancelar edición
+                  </button>
+                )}
+              </div>
+            </form>
+
+            <div className="mt-4 space-y-3">
+              {loadingBoxes ? (
+                <PageLoader compact label="Cargando boxes..." />
+              ) : boxes.length === 0 ? (
+                <EmptyState
+                  icon={Building}
+                  title="Sin boxes creados"
+                  description="Agrega al menos un box para asignarlo a profesionales y citas."
+                />
+              ) : (
+                boxes.map((box) => (
+                  <div key={box.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 px-4 py-3">
+                    <div>
+                      <p className="font-medium text-gray-900">{box.nombre}</p>
+                      <p className="text-sm text-gray-500">{box.descripcion || 'Sin descripción'}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleEditBox(box)}
+                        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBoxToDelete(box)}
+                        className="rounded-md bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -804,6 +1027,7 @@ const Configuracion = () => {
             <option value="centros">Centros</option>
             <option value="sucursales">Sucursales</option>
             <option value="tipos_atencion">Tipos de atención</option>
+            <option value="boxes">Boxes</option>
           </select>
 
           <select
@@ -904,6 +1128,16 @@ const Configuracion = () => {
         loading={deleting}
         onCancel={() => setShowDeleteDialog(false)}
         onConfirm={handleDeleteCentro}
+      />
+      <ConfirmDialog
+        open={!!boxToDelete}
+        title="Eliminar box"
+        description={boxToDelete ? `Vas a eliminar el box "${boxToDelete.nombre}". Si ya fue usado, quedará oculto pero seguirá en el historial.` : 'Selecciona un box para eliminar.'}
+        confirmLabel="Eliminar box"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => setBoxToDelete(null)}
+        onConfirm={handleDeleteBox}
       />
     </div>
   )

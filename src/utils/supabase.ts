@@ -1,9 +1,10 @@
 import { supabase } from '@/lib/supabase'
 export { supabase }
-import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision, AuditLog, ProfesionalDisponibilidad } from '@/types/database'
+import { Profesional, Paciente, Atencion, Costo, TipoAtencion, ReporteMensual, Centro, CentroConfig, Usuario, Sucursal, ProfesionalComision, AuditLog, ProfesionalDisponibilidad, Box } from '@/types/database'
 import { eachDayOfInterval, format, parseISO } from 'date-fns'
 import { buildBloqueoSlots, getBloqueoLabel } from '@/utils/bloqueos'
 import { getFinancialAmount, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
+import { calculateAtencionProfessionalPayment, getMonthlyBoxIncome } from '@/utils/professionalPayment'
 
 const applyCentroFilter = <T>(query: T, centroId?: string | null) => {
   if (!centroId) return query
@@ -140,7 +141,7 @@ export const profesionalesService = {
   async getAll(sucursalId?: string, centroId?: string): Promise<Profesional[]> {
     let query = supabase
       .from('profesionales')
-      .select('*')
+      .select('*, box:boxes(*)')
       .eq('activo', true)
       .order('nombre')
 
@@ -159,7 +160,7 @@ export const profesionalesService = {
   async getById(id: string): Promise<Profesional | null> {
     const { data, error } = await supabase
       .from('profesionales')
-      .select('*')
+      .select('*, box:boxes(*)')
       .eq('id', id)
       .single()
     
@@ -255,6 +256,119 @@ export const profesionalesService = {
         sucursalId: oldData.sucursal_id ?? null
       })
     }
+  }
+}
+
+export const boxesService = {
+  async getAll(sucursalId?: string, centroId?: string): Promise<Box[]> {
+    let query = supabase
+      .from('boxes')
+      .select('*')
+      .eq('activo', true)
+      .order('nombre')
+
+    query = applyCentroFilter(query, centroId)
+
+    if (sucursalId) {
+      query = query.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+    return data || []
+  },
+
+  async getById(id: string): Promise<Box | null> {
+    const { data, error } = await supabase
+      .from('boxes')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async create(box: Omit<Box, 'id' | 'created_at' | 'updated_at'>): Promise<Box> {
+    const { data, error } = await supabase
+      .from('boxes')
+      .insert([box])
+      .select()
+      .single()
+
+    if (error) throw error
+    await auditService.logAction('boxes', data.id, {
+      action: 'INSERT',
+      newData: data,
+      centroId: data.centro_id,
+      sucursalId: data.sucursal_id ?? null
+    })
+    return data
+  },
+
+  async update(id: string, box: Partial<Box>): Promise<Box> {
+    const oldData = await this.getById(id)
+    const { data, error } = await supabase
+      .from('boxes')
+      .update(box)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    await auditService.logAction('boxes', id, {
+      action: 'UPDATE',
+      oldData,
+      newData: data,
+      centroId: data.centro_id,
+      sucursalId: data.sucursal_id ?? null
+    })
+    return data
+  },
+
+  async delete(id: string): Promise<void> {
+    const oldData = await this.getById(id)
+    if (!oldData) {
+      throw new Error('Box no encontrado')
+    }
+
+    const [atencionesUsage, profesionalesUsage] = await Promise.all([
+      supabase.from('atenciones').select('*', { count: 'exact', head: true }).eq('box_id', id),
+      supabase.from('profesionales').select('*', { count: 'exact', head: true }).eq('box_id', id)
+    ])
+
+    const usageError = [atencionesUsage, profesionalesUsage].find((result) => result.error)?.error
+    if (usageError) throw usageError
+
+    const hasHistoricalUsage = (atencionesUsage.count || 0) > 0 || (profesionalesUsage.count || 0) > 0
+
+    if (hasHistoricalUsage) {
+      const { error } = await supabase
+        .from('boxes')
+        .update({ activo: false })
+        .eq('id', id)
+
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('boxes')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+    }
+
+    await auditService.logAction('boxes', id, {
+      action: 'SOFT_DELETE',
+      oldData,
+      metadata: {
+        delete_mode: hasHistoricalUsage ? 'soft' : 'hard',
+        had_historical_usage: hasHistoricalUsage
+      },
+      centroId: oldData.centro_id,
+      sucursalId: oldData.sucursal_id ?? null
+    })
   }
 }
 
@@ -497,6 +611,47 @@ const validateAtencionOverlap = async (
 
     throw new Error(`La profesional ya tiene ocupado ese horario a las ${horaExistente} con ${tipoExistente}. Puedes usar la misma hora solo en otra profesional.`)
   }
+
+  if (atencion.box_id) {
+    const { data: boxData, error: boxError } = await supabase
+      .from('atenciones')
+      .select('id, hora, profesional:profesionales(nombre), box:boxes(nombre), paciente:pacientes(nombre), es_bloqueo, estado_cita, tipo_bloqueo')
+      .eq('activo', true)
+      .eq('box_id', atencion.box_id)
+      .eq('fecha', atencion.fecha)
+
+    if (boxError) throw boxError
+
+    const overlappingBox = (boxData || []).find((existing) => {
+      if (excludeId && existing.id === excludeId) return false
+      if ((existing.estado_cita || 'por_confirmar') === 'cancelada') return false
+      if ((existing.estado_cita || 'por_confirmar') === 'reagendada') return false
+
+      const existingStart = timeToMinutes(existing.hora)
+      const existingEnd = existingStart + ATENCION_DURATION_MINUTES
+      return existingStart < newEnd && existingEnd > newStart
+    })
+
+    if (overlappingBox) {
+      const horaExistente = String(overlappingBox.hora || '').substring(0, 5)
+      const boxName = Array.isArray((overlappingBox as any).box)
+        ? (overlappingBox as any).box[0]?.nombre
+        : (overlappingBox as any).box?.nombre
+      const profesionalName = Array.isArray((overlappingBox as any).profesional)
+        ? (overlappingBox as any).profesional[0]?.nombre
+        : (overlappingBox as any).profesional?.nombre
+      const pacienteName = Array.isArray((overlappingBox as any).paciente)
+        ? (overlappingBox as any).paciente[0]?.nombre
+        : (overlappingBox as any).paciente?.nombre
+      const detalle = overlappingBox.es_bloqueo
+        ? getBloqueoLabel((overlappingBox as any).tipo_bloqueo) || 'un bloqueo no clínico'
+        : pacienteName
+          ? `la atención de ${pacienteName}`
+          : 'otra atención'
+
+      throw new Error(`El box ${boxName || 'seleccionado'} ya está ocupado a las ${horaExistente} por ${profesionalName || 'otra profesional'} con ${detalle}.`)
+    }
+  }
 }
 
 export const atencionesService = {
@@ -507,7 +662,8 @@ export const atencionesService = {
         *,
         profesional:profesionales(*),
         paciente:pacientes(*),
-        tipos_atencion(*)
+        tipos_atencion(*),
+        box:boxes(*)
       `)
       .eq('activo', true)
       .order('fecha', { ascending: false })
@@ -531,7 +687,8 @@ export const atencionesService = {
         *,
         profesional:profesionales(*),
         paciente:pacientes(*),
-        tipos_atencion(*)
+        tipos_atencion(*),
+        box:boxes(*)
       `)
       .eq('id', id)
       .single()
@@ -547,7 +704,8 @@ export const atencionesService = {
         *,
         profesional:profesionales(*),
         paciente:pacientes(*),
-        tipos_atencion(*)
+        tipos_atencion(*),
+        box:boxes(*)
       `)
       .eq('activo', true)
       .gte('fecha', startDate)
@@ -573,7 +731,8 @@ export const atencionesService = {
         *,
         profesional:profesionales(*),
         paciente:pacientes(*),
-        tipos_atencion(*)
+        tipos_atencion(*),
+        box:boxes(*)
       `)
       .eq('activo', true)
       .eq('pagado', false)
@@ -598,7 +757,8 @@ export const atencionesService = {
         *,
         profesional:profesionales(*),
         paciente:pacientes(*),
-        tipos_atencion(*)
+        tipos_atencion(*),
+        box:boxes(*)
       `)
       .eq('activo', true)
       .eq('paciente_id', pacienteId)
@@ -628,7 +788,8 @@ export const atencionesService = {
         *,
         profesional:profesionales(*),
         paciente:pacientes(*),
-        tipos_atencion(*)
+        tipos_atencion(*),
+        box:boxes(*)
       `)
       .eq('activo', true)
       .eq('profesional_id', profesionalId)
@@ -1213,37 +1374,28 @@ export const reportesService = {
     const saldoPendiente = ingresosTotales - ingresosCobrados
 
     // Calcular pagos a profesionales considerando excepciones
-    const totalPagadoProfesionales = atencionesCobrables.reduce((sum, a) => {
-      if (a.profesional) {
-        // Buscar regla específica para este profesional y tipo de atención
-        const comisionEspecifica = comisiones.find(c => 
-          c.profesional_id === a.profesional_id && 
-          c.tipo_atencion_id === a.tipo_atencion
-        )
-
-        // Usar porcentaje específico si existe, si no el general del profesional
-        const porcentajeEfectivo = comisionEspecifica?.porcentaje ?? a.profesional.porcentaje_pago ?? 0
-        const montoFijoEfectivo = comisionEspecifica?.monto_fijo ?? a.profesional.monto_fijo_pago ?? 0
-
-        if (porcentajeEfectivo > 0) {
-          return sum + (getFinancialAmount(a) * porcentajeEfectivo / 100)
-        } else if (montoFijoEfectivo > 0) {
-          return sum + montoFijoEfectivo
-        }
-      }
-      return sum
+    const totalPagadoProfesionalesSesiones = atencionesCobrables.reduce((sum, a) => {
+      return sum + calculateAtencionProfessionalPayment(a, a.profesional, comisiones)
     }, 0)
+
+    const ingresosBoxesMensuales = getMonthlyBoxIncome(
+      (await profesionalesService.getAll(sucursalId, centroId)).filter((profesional) => profesional.activo)
+    )
+
+    const totalPagadoProfesionales = totalPagadoProfesionalesSesiones
 
     const costosOperacionales = costosFijos + costosVariables
     const totalOperacion = costosOperacionales + totalPagadoProfesionales
-    const resultadoFinal = ingresosTotales + totalAportes - totalOperacion
+    const resultadoFinal = ingresosTotales + ingresosBoxesMensuales + totalAportes - totalOperacion
 
     return {
       mes: startDate,
       total_atenciones: atenciones.length,
       ingresos_totales: ingresosTotales,
+      ingresos_boxes_mensuales: ingresosBoxesMensuales,
       ingresos_cobrados: ingresosCobrados,
       total_pagado_profesionales: totalPagadoProfesionales,
+      total_pagado_profesionales_sesiones: totalPagadoProfesionalesSesiones,
       total_aportes: totalAportes,
       utilidad_neta: resultadoFinal,
       resultado_final: resultadoFinal,
