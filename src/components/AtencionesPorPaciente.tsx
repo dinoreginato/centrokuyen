@@ -11,6 +11,7 @@ import { atencionesService, pacientesService } from '@/utils/supabase'
 import { formatCLP } from '@/utils/currency'
 import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { canManageAtencion, canManagePayment, hasPermission } from '@/utils/permissions'
+import { getSessionPlanLabel } from '@/utils/sessionPlan'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 
@@ -273,7 +274,19 @@ const AtencionesPorPaciente = () => {
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {atencion.tipos_atencion?.nombre || '-'}
+                      <div className="flex flex-col">
+                        <span>{atencion.tipos_atencion?.nombre || '-'}</span>
+                        {(() => {
+                          const sessionPlanLabel = getSessionPlanLabel(atencion)
+                          if (!sessionPlanLabel) return null
+
+                          return (
+                            <span className="mt-1 inline-flex w-fit items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                              {sessionPlanLabel}
+                            </span>
+                          )
+                        })()}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getEstadoCitaBadgeClass(atencion.estado_cita)}`}>

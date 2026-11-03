@@ -11,6 +11,7 @@ import { es } from 'date-fns/locale'
 import { getEstadoCitaBadgeClass, getEstadoCitaCardClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { getBloqueoBadgeClass, getBloqueoLabel } from '@/utils/bloqueos'
 import { canManageAtencion, canManagePayment, hasPermission } from '@/utils/permissions'
+import { getSessionPlanLabel } from '@/utils/sessionPlan'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -217,27 +218,6 @@ Gracias 🙌🏻`
     if (Number.isNaN(date.getTime())) return null
     const edad = differenceInYears(new Date(), date)
     return edad >= 0 ? edad : null
-  }
-
-  const getSessionPlanLabel = (atencion: Atencion) => {
-    if (atencion.es_bloqueo) return null
-
-    if (atencion.plan_tratamiento_id) {
-      if (atencion.numero_sesion && atencion.total_sesiones) {
-        return `Sesión ${atencion.numero_sesion}/${atencion.total_sesiones}`
-      }
-
-      return null
-    }
-
-    if (atencion.numero_sesion && atencion.total_sesiones) {
-      return `Sesión ${atencion.numero_sesion}/${atencion.total_sesiones}`
-    }
-
-    const match = atencion.observaciones?.match(/sesi[oó]n\s+(\d+)\s+de\s+(\d+)/i)
-    if (!match) return null
-
-    return `Sesión ${match[1]}/${match[2]}`
   }
 
   const getBloqueoTitle = (atencion: Atencion) => {
