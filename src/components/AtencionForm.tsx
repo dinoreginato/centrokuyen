@@ -368,7 +368,7 @@ const AtencionForm = () => {
     setFormData((prev) => ({
       ...prev,
       profesional_id: profesionalId,
-      box_id: profesional?.box_id || prev.box_id
+      box_id: profesional?.box_id || ''
     }))
   }
 
@@ -458,6 +458,7 @@ const AtencionForm = () => {
             ...formData,
             paciente_id: null,
             tipo_atencion: null,
+            box_id: formData.box_id || null,
             valor_cobrado: 0,
             pagado: true,
             estado_cita: 'confirmada' as EstadoCita,
@@ -466,6 +467,7 @@ const AtencionForm = () => {
           }
         : {
             ...formData,
+            box_id: formData.box_id || null,
             pagado: formData.estado_cita === 'cancelada' || formData.estado_cita === 'reagendada'
               ? false
               : formData.pagado,
