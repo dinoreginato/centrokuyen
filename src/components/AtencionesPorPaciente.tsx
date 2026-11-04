@@ -11,7 +11,7 @@ import { atencionesService, pacientesService } from '@/utils/supabase'
 import { formatCLP } from '@/utils/currency'
 import { getEstadoCitaBadgeClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { canManageAtencion, canManagePayment, hasPermission } from '@/utils/permissions'
-import { getSessionPlanLabel } from '@/utils/sessionPlan'
+import { buildSessionPlanLabelMap, getSessionPlanLabel } from '@/utils/sessionPlan'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 
@@ -57,6 +57,7 @@ const AtencionesPorPaciente = () => {
     try {
       setLoadingAtenciones(true)
       const profesionalId = user?.rol === 'profesional' ? user.profesional_id : undefined
+      await atencionesService.repairPacienteSessionPlans(paciente.id, currentSucursal?.id, profesionalId, currentCentro?.id)
       const data = await atencionesService.getByPacienteId(paciente.id, currentSucursal?.id, profesionalId, currentCentro?.id)
       setAtenciones(data)
     } catch (error) {
@@ -117,6 +118,8 @@ const AtencionesPorPaciente = () => {
       return matchesPago && matchesEstado && matchesSearch
     })
   }, [atencionSearch, atenciones, estadoCitaFilter, pagoFilter])
+
+  const sessionPlanLabels = useMemo(() => buildSessionPlanLabelMap(atenciones), [atenciones])
 
   if (loadingPacientes) {
     return <PageLoader label="Cargando pacientes..." />
@@ -277,7 +280,7 @@ const AtencionesPorPaciente = () => {
                       <div className="flex flex-col">
                         <span>{atencion.tipos_atencion?.nombre || '-'}</span>
                         {(() => {
-                          const sessionPlanLabel = getSessionPlanLabel(atencion)
+                          const sessionPlanLabel = getSessionPlanLabel(atencion, sessionPlanLabels)
                           if (!sessionPlanLabel) return null
 
                           return (

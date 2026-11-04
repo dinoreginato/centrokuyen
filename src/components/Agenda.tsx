@@ -11,7 +11,7 @@ import { es } from 'date-fns/locale'
 import { getEstadoCitaBadgeClass, getEstadoCitaCardClass, getEstadoCitaLabel } from '@/utils/atencionEstado'
 import { getBloqueoBadgeClass, getBloqueoLabel } from '@/utils/bloqueos'
 import { canManageAtencion, canManagePayment, hasPermission } from '@/utils/permissions'
-import { getSessionPlanLabel } from '@/utils/sessionPlan'
+import { buildSessionPlanLabelMap, getSessionPlanLabel } from '@/utils/sessionPlan'
 import PageLoader from '@/components/ui/PageLoader'
 import EmptyState from '@/components/ui/EmptyState'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -64,6 +64,8 @@ const Agenda = () => {
         end: endOfWeek(currentWeek, { weekStartsOn: 1 })
       })
     : [selectedDate]
+
+  const sessionPlanLabels = useMemo(() => buildSessionPlanLabelMap(atenciones), [atenciones])
 
   const navigate = (direction: 'prev' | 'next') => {
     if (viewMode === 'month') {
@@ -285,7 +287,7 @@ Gracias 🙌🏻`
         </div>
 
         {(() => {
-          const sessionPlanLabel = getSessionPlanLabel(atencion)
+          const sessionPlanLabel = getSessionPlanLabel(atencion, sessionPlanLabels)
           if (!sessionPlanLabel) return null
 
           return (

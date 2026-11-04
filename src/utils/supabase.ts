@@ -5,6 +5,7 @@ import { eachDayOfInterval, format, parseISO } from 'date-fns'
 import { buildBloqueoSlots, getBloqueoLabel } from '@/utils/bloqueos'
 import { getFinancialAmount, isBillableAtencion, sumFinancialAmounts } from '@/utils/financial'
 import { calculateAtencionProfessionalPayment, getMonthlyBoxIncome } from '@/utils/professionalPayment'
+import { buildSessionPlanRepairPayloads } from '@/utils/sessionPlan'
 
 const applyCentroFilter = <T>(query: T, centroId?: string | null) => {
   if (!centroId) return query
@@ -45,6 +46,42 @@ const parseLegacySessionPlan = (observaciones?: string | null) => {
     numeroSesion,
     totalSesiones
   }
+}
+
+const fetchAtencionesByPaciente = async (
+  pacienteId: string,
+  sucursalId?: string,
+  profesionalId?: string,
+  centroId?: string
+): Promise<Atencion[]> => {
+  let query = supabase
+    .from('atenciones')
+    .select(`
+      *,
+      profesional:profesionales(*),
+      paciente:pacientes(*),
+      tipos_atencion(*),
+      box:boxes(*)
+    `)
+    .eq('activo', true)
+    .eq('paciente_id', pacienteId)
+    .order('fecha', { ascending: false })
+    .order('hora', { ascending: false })
+
+  query = applyCentroFilter(query, centroId)
+
+  if (sucursalId) {
+    query = query.eq('sucursal_id', sucursalId)
+  }
+
+  if (profesionalId) {
+    query = query.eq('profesional_id', profesionalId)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  return data || []
 }
 
 // Helper for audit logging
@@ -751,34 +788,34 @@ export const atencionesService = {
   },
 
   async getByPacienteId(pacienteId: string, sucursalId?: string, profesionalId?: string, centroId?: string): Promise<Atencion[]> {
-    let query = supabase
-      .from('atenciones')
-      .select(`
-        *,
-        profesional:profesionales(*),
-        paciente:pacientes(*),
-        tipos_atencion(*),
-        box:boxes(*)
-      `)
-      .eq('activo', true)
-      .eq('paciente_id', pacienteId)
-      .order('fecha', { ascending: false })
-      .order('hora', { ascending: false })
+    return fetchAtencionesByPaciente(pacienteId, sucursalId, profesionalId, centroId)
+  },
 
-    query = applyCentroFilter(query, centroId)
+  async repairPacienteSessionPlans(pacienteId: string, sucursalId?: string, profesionalId?: string, centroId?: string): Promise<number> {
+    const atenciones = await fetchAtencionesByPaciente(pacienteId, sucursalId, profesionalId, centroId)
+    const repairs = buildSessionPlanRepairPayloads(atenciones, createUuidLike)
 
-    if (sucursalId) {
-      query = query.eq('sucursal_id', sucursalId)
+    if (repairs.length === 0) {
+      return 0
     }
 
-    if (profesionalId) {
-      query = query.eq('profesional_id', profesionalId)
-    }
+    const results = await Promise.all(
+      repairs.map((repair) =>
+        supabase
+          .from('atenciones')
+          .update({
+            plan_tratamiento_id: repair.plan_tratamiento_id,
+            numero_sesion: repair.numero_sesion,
+            total_sesiones: repair.total_sesiones
+          })
+          .eq('id', repair.id)
+      )
+    )
 
-    const { data, error } = await query
+    const firstError = results.find((result) => result.error)?.error
+    if (firstError) throw firstError
 
-    if (error) throw error
-    return data || []
+    return repairs.length
   },
 
   async getByProfesionalAndDateRange(profesionalId: string, startDate: string, endDate: string, sucursalId?: string, centroId?: string): Promise<Atencion[]> {
