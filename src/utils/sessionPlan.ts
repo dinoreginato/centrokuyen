@@ -46,63 +46,78 @@ const getAtencionPlanTotal = (atencion: Atencion) => {
 }
 
 const getImplicitPlanSignature = (atencion: Atencion) => {
-  const totalSesiones = getAtencionPlanTotal(atencion)
-  if (!totalSesiones || !atencion.paciente_id) return null
+  if (!atencion.paciente_id) return null
 
   return [
     atencion.paciente_id,
     atencion.profesional_id,
-    atencion.tipo_atencion || 'sin-tipo',
-    totalSesiones
+    atencion.tipo_atencion || 'sin-tipo'
   ].join('::')
 }
 
 const getPlanGroups = (atenciones: Atencion[]) => {
-  const chronological = getChronologicalAtenciones(atenciones)
-  const explicitGroups = new Map<string, Atencion[]>()
-  const implicitBuckets = new Map<string, Atencion[]>()
+  const groups: Atencion[][] = []
+  const signatureBuckets = new Map<string, Atencion[]>()
 
-  chronological.forEach((atencion) => {
-    if (atencion.plan_tratamiento_id) {
-      const current = explicitGroups.get(atencion.plan_tratamiento_id) || []
-      current.push(atencion)
-      explicitGroups.set(atencion.plan_tratamiento_id, current)
+  getChronologicalAtenciones(atenciones).forEach((atencion) => {
+    const signature = getImplicitPlanSignature(atencion)
+
+    if (!signature) {
+      if (atencion.plan_tratamiento_id && (atencion.total_sesiones || 0) > 1) {
+        groups.push([atencion])
+      }
       return
     }
 
-    const signature = getImplicitPlanSignature(atencion)
-    if (!signature) return
-
-    const current = implicitBuckets.get(signature) || []
+    const current = signatureBuckets.get(signature) || []
     current.push(atencion)
-    implicitBuckets.set(signature, current)
+    signatureBuckets.set(signature, current)
   })
 
-  const groups: Atencion[][] = [...explicitGroups.values()]
-
-  implicitBuckets.forEach((bucket) => {
-    const sortedBucket = getChronologicalAtenciones(bucket)
+  signatureBuckets.forEach((bucket) => {
+    const orderedBucket = getChronologicalAtenciones(bucket)
     let currentGroup: Atencion[] = []
+    let currentTotal: number | null = null
     let activeCount = 0
 
-    sortedBucket.forEach((atencion) => {
-      const totalSesiones = getAtencionPlanTotal(atencion) || 0
-      if (currentGroup.length > 0 && activeCount >= totalSesiones) {
+    const closeCurrentGroup = () => {
+      if (currentGroup.length > 0) {
         groups.push(currentGroup)
-        currentGroup = []
-        activeCount = 0
+      }
+      currentGroup = []
+      currentTotal = null
+      activeCount = 0
+    }
+
+    orderedBucket.forEach((atencion) => {
+      const desiredTotal = getAtencionPlanTotal(atencion)
+
+      if (currentGroup.length === 0) {
+        if (!desiredTotal || desiredTotal <= 1) {
+          return
+        }
+
+        currentGroup = [atencion]
+        currentTotal = desiredTotal
+        activeCount = isInactivePlanSession(atencion) ? 0 : 1
+
+        if (activeCount >= currentTotal) {
+          closeCurrentGroup()
+        }
+        return
       }
 
       currentGroup.push(atencion)
-
       if (!isInactivePlanSession(atencion)) {
         activeCount += 1
       }
+
+      if (currentTotal && activeCount >= currentTotal) {
+        closeCurrentGroup()
+      }
     })
 
-    if (currentGroup.length > 0) {
-      groups.push(currentGroup)
-    }
+    closeCurrentGroup()
   })
 
   return groups
